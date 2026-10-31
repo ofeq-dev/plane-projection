@@ -2,7 +2,7 @@
 
 ## General
 
-1. Include an AI discolure in each PR.
+1. Include an AI disclosure in each PR.
 2. Merges are only done by human to ensure _every single_ line is reviewed / explained / owned.
 3. Commit frequently
 
@@ -12,7 +12,7 @@
 
 - Going from "not well defined" to "robustly designed"
 - Writing documents like SOW, SRS, etc.
-- Time efficientcy + frequent commits
+- Time efficiency + frequent commits
 - Comprehensive testing suite
 
 **Description**:
@@ -23,13 +23,13 @@
 
 **Details**:
 
-- Each voxel `v = M[x][y][z]` is a unsigned integer
+- Each voxel `v = M[x][y][z]` is an unsigned integer
 - A given `M` can be 8, 16, or 32 bit values
 - Each dimension `sx,sy,sz` of `M` must be `1 <= s < 2^10`
 - Each "plane" consists of 3 to 4 coordinates
   - 3 points fulfil `|dist(a,b) - dist(a,c)| < 0.001`
   - 4 points fulfil:
-    1. `|dist(a1,b) - dist(a2,c)| < 0.001 `
+    1. `|dist(a1,b) - dist(a2,c)| < 0.001`
     2. `dist(a1,a2) <= dist(b,c)`
     3. a1,b and a2,c are on the same plane
 - An invalid plane should raise an exception and the output video should convey this with an "error frame"
