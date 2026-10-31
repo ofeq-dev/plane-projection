@@ -45,3 +45,13 @@
 3. [ ] Define a testing strategy
 4. [ ] Export an example run and include a write up
 5. [ ] Ensure the repo contains 1) docs, 2) source code, 3) README (with build / run instruction), 4) benchmarks, videos, etc.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues (`ofeq-dev/plane-projection`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
