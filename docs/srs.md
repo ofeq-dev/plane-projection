@@ -75,7 +75,7 @@ this SRS pins what the tool must accept, produce, and how fast.
 - **FR-8** Each row defines one plane: 3 points `(a, b, c)` or 4 points in the column
   order `(a1, a2, b, c)`. Column order is the validity-rule order referenced below.
 - **FR-9** A CSV file missing its trailing newline, and integer- or float-point
-  coordinates, must parse identically (both occur in the provided examples).
+  coordinates, must parse identically.
 - **FR-10** A plane is **valid** iff it satisfies the brief's rules with `EPS = 0.001`:
   3-point: `|dist(a,b) − dist(a,c)| < EPS`; 4-point: `|dist(a1,b) − dist(a2,c)| < EPS`,
   `dist(a1,a2) ≤ dist(b,c)`, and both legs `a1→b`, `a2→c` lie in one plane.
