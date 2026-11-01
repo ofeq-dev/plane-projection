@@ -40,8 +40,9 @@ def test_usage_error_is_printed_without_traceback(capsys):
     assert err.strip().count("\n") == 0
 
 
-@pytest.mark.parametrize("stream", ["out", "err"])
-def test_errors_go_to_stderr(stream, capsys, tmp_path):
+def test_errors_go_to_stderr(capsys, tmp_path):
+    # Usage errors are stderr-only; stdout stays silent so automated runs can
+    # trust it (FR-2's 'one-line CLI error').
     Ex0.main([str(tmp_path / "no.nrrd"), "a.csv", "out.mp4"])
     captured = capsys.readouterr()
     assert "no.nrrd" in captured.err
@@ -86,13 +87,6 @@ def tmp_nrrd(tmp_path):
     return file
 
 
-@pytest.fixture
-def tiny_csv(tmp_path):
-    file = tmp_path / "tiny.csv"
-    file.write_text("Number of Points (3 or 4),x1,y1,z1,,\n3,0,0,0,,\n")
-    return file
-
-
 def test_rejecting_volume_happens_before_counting(tmp_path, capsys, tmp_nrrd):
     # Order matters for the error's message: the volume named, even while the
     # plane list is also broken.
@@ -105,7 +99,7 @@ def test_rejecting_volume_happens_before_counting(tmp_path, capsys, tmp_nrrd):
 # --- end-to-end on the real corpus (acceptance probe) -----------------------
 
 @pytest.mark.skipif(
-    not (Path("assets/csv/lecturer_example.csv").exists() or shutil.which("ffmpeg")),
+    not ((ASSETS / "csv" / "lecturer_example.csv").exists() and shutil.which("ffmpeg")),
     reason="corpus assets or ffmpeg unavailable",
 )
 def test_brief_command_on_lecturer_example(tmp_path, capsys):

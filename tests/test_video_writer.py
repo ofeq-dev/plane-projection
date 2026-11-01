@@ -27,7 +27,7 @@ def ffprobe(path, *args):
     return run.stdout.strip()
 
 
-def decode_frames(path, canvas):
+def decode_frames(path):
     return subprocess.run(
         ["ffmpeg", "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
         capture_output=True,
@@ -59,7 +59,7 @@ def test_placeholders_are_uniform_black(tmp_path):
     out = tmp_path / "uniform.mp4"
     canvas = (64, 48)
     Ex0.write_video(out, 3, canvas=canvas)
-    raw = decode_frames(out, canvas)
+    raw = decode_frames(out)
     height, width = canvas[1], canvas[0]
     frames = [
         raw[i * height * width * 3:(i + 1) * height * width * 3]

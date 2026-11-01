@@ -23,6 +23,7 @@ import csv
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,29 @@ import nrrd
 
 class UsageError(Exception):
     """A user-fixable input/usage problem reported as a one-line CLI error (FR-2)."""
+
+
+def _require_file(label: str, path: Path) -> None:
+    """One-line usage error when a named input path is a directory (FR-2).
+
+    A missing file is NOT pre-checked: the open/read call raises FileNotFoundError
+    (no time-of-check/time-of-use lie); :func:`_os_errors_as_usage` converts it.
+    """
+    if path.is_dir():
+        raise UsageError(f"cannot read {label}: '{path}' is a directory, not a file")
+
+
+@contextmanager
+def _os_errors_as_usage(label: str, path: Path):
+    """Convert file-access OS errors into one-line usage errors (FR-2)."""
+    try:
+        yield
+    except FileNotFoundError as e:
+        raise UsageError(f"cannot read {label} '{path}': no such file") from e
+    except PermissionError as e:
+        raise UsageError(f"cannot read {label} '{path}': permission denied") from e
+    except OSError as e:
+        raise UsageError(f"cannot read {label} '{path}': {e.strerror or e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -60,16 +84,13 @@ def load_volume(path: str | Path) -> np.ndarray:
 
     Dimensions must satisfy ``1 <= s < 2**10`` per axis (FR-5).
     """
-    if Path(path).is_dir():
-        raise UsageError(f"cannot read volume: '{path}' is a directory, not a file")
+    path = Path(path)
+    _require_file("volume", path)
     try:
-        data, _header = nrrd.read(path, index_order="F")  # FR-6: header deliberately unused
-    except FileNotFoundError as e:
-        raise UsageError(f"cannot read volume '{path}': no such file") from e
-    except PermissionError as e:
-        raise UsageError(f"cannot read volume '{path}': permission denied") from e
-    except OSError as e:
-        raise UsageError(f"cannot read volume '{path}': {e.strerror or e}") from e
+        with _os_errors_as_usage("volume", path):
+            data, _header = nrrd.read(path, index_order="F")  # FR-6: header deliberately unused
+    except UsageError:
+        raise
     except Exception as e:  # pynrrd parse errors
         raise UsageError(f"cannot load NRRD '{path}': {e}") from e
 
@@ -110,27 +131,20 @@ def count_planes(path: str | Path) -> int:
     missing trailing newline (FR-9); rows that are entirely empty are not
     planes.
     """
-    if Path(path).is_dir():
-        raise UsageError(f"cannot read plane list: '{path}' is a directory, not a file")
-    try:
+    path = Path(path)
+    _require_file("plane list", path)
+    with _os_errors_as_usage("plane list", path):
         with open(path, newline="") as file:
             reader = csv.reader(file)
-            try:
-                next(reader)  # header row (FR-7) — not counted
-            except StopIteration:
+            header = next(reader, None)
+            if header is None:
                 raise UsageError(
                     f"cannot read plane list '{path}': empty file (no header)"
-                ) from None
+                )
             try:
                 return sum(1 for row in reader if any(cell.strip() for cell in row))
             except csv.Error as e:
                 raise UsageError(f"cannot parse plane list '{path}': {e}") from e
-    except FileNotFoundError as e:
-        raise UsageError(f"cannot read plane list '{path}': no such file") from e
-    except PermissionError as e:
-        raise UsageError(f"cannot read plane list '{path}': permission denied") from e
-    except OSError as e:
-        raise UsageError(f"cannot read plane list '{path}': {e.strerror or e}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +227,8 @@ def write_video(
 
     stdin = process.stdin
     stderr = process.stderr
-    assert stdin is not None and stderr is not None  # Popen(PIPE) guarantees both
+    if stdin is None or stderr is None:  # unreachable with stdin/stderr=PIPE
+        raise UsageError(f"cannot write video '{out_path}': encoder did not open its pipes")
 
     try:
         for _ in range(n_frames):
