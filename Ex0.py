@@ -211,16 +211,20 @@ def write_video(
     except OSError as e:
         raise UsageError(f"cannot write video '{out_path}': ffmpeg failed to start: {e}") from e
 
+    stdin = process.stdin
+    stderr = process.stderr
+    assert stdin is not None and stderr is not None  # Popen(PIPE) guarantees both
+
     try:
         for _ in range(n_frames):
-            process.stdin.write(black_frame.tobytes())
-        process.stdin.close()
+            stdin.write(black_frame.tobytes())
+        stdin.close()
     except BrokenPipeError as e:
         _raise_encoder_failure(out_path, process, e)
     except OSError as e:
         raise UsageError(f"cannot write video '{out_path}': {e}") from e
 
-    stderr_tail = process.stderr.read().decode(errors="replace").strip()
+    stderr_tail = stderr.read().decode(errors="replace").strip()
     return_code = process.wait()
     if return_code != 0:
         reason = " ".join(stderr_tail.replace("\n", " | ").split())[:300]
