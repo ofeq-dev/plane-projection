@@ -282,15 +282,13 @@ def _parse_row(row_idx: int, raw: list[str]) -> Plane | PlaneError:
     points: list[Point] = []
     for i in range(n):
         cells = raw[1 + 3 * i : 4 + 3 * i]
-        try:
-            points.append(tuple(float(cell) for cell in cells))  # type: ignore[arg-type]
-        except ValueError:
-            for cell in cells:
-                try:
-                    float(cell)
-                except ValueError:
-                    return fail(f"coordinate is not a number: '{cell.strip()}' (point {i + 1})")
-            raise  # unreachable: float() failed above, so some cell must fail here
+        point: list[float] = []
+        for j, cell in enumerate(cells):
+            try:
+                point.append(float(cell))
+            except ValueError:
+                return fail(f"coordinate is not a number: '{cell.strip()}' (point {i + 1})")
+        points.append((point[0], point[1], point[2]))
 
     if n == 3:
         reason = _validate_triangle(*points)
