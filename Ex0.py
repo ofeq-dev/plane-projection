@@ -483,8 +483,7 @@ def count_planes(path: str | Path) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder video writer (FR-19 container contract; FR-18's real canvas
-# arrives with the renderer — encoder choice: docs/adr/0003)
+# Video writer (FR-17..FR-21 container contract; encoder choice: docs/adr/0004)
 # ---------------------------------------------------------------------------
 
 #: Fallback canvas (width, height) when a CSV has no renderable row at all
