@@ -158,9 +158,10 @@ this SRS pins what the tool must accept, produce, and how fast.
 ### 5.3 Acceptance criteria
 
 1. `python Ex0.py assets/nrrd/MRHead_1.nrrd assets/csv/lecturer_example.csv out.mp4`
-   runs without a traceback and produces 4 frames; row 2's set
-   (`dist(a1,b)=400` vs `dist(a2,c)=500`, diff `≥ EPS`) renders an error frame whose
-   banner names that rule; rows 1, 3, 4 render projections.
+   runs without a traceback and produces 4 frames; row 3 fails the 3-point
+   isosceles rule and row 4's set (`dist(a1,b)=300` vs `dist(a2,c)=400`, diff
+   `≥ EPS`) renders an error frame whose banner names that rule; rows 1-2
+   render projections.
 2. `head.csv` against `MRHead_1` produces a video of axial slices, black above/below
    (rows whose z-coordinate leaves the volume).
 3. Cross-student check: the same CSV, rendered by a classmate's implementation, matches
