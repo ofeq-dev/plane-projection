@@ -2,15 +2,20 @@
 
 Brief's demo contract (FR-1): ``python Ex0.py file.nrrd file.csv file.mp4``.
 
-Ticket 1 pieces (requirements are normative in ``docs/srs.md``):
+Requirements are normative in ``docs/srs.md``:
 
 * :func:`load_volume` — NRRD volume loader (FR-3..FR-6).
 * :func:`parse_planes` — CSV plane-list parsing + per-row validation into
   :class:`Plane` / :class:`PlaneError` records (FR-7..FR-11); :func:`count_planes`
   counts the records (FR-17 groundwork).
-* :func:`write_video` — the video container (FR-19); this ticket writes one
-  black placeholder frame per CSV row at a placeholder canvas (FR-18's real
-  canvas arrives with the renderer).
+* :func:`render_frames` — the render seam: renders each validated plane to a
+  density-sized grayscale frame (FR-12/FR-13; geometry pinned in
+  ``docs/algorithm.md``) and passes error rows through.
+* :func:`canvas_size` / :func:`pad_frame` — the video's fixed even canvas and
+  top-left black padding (FR-18/FR-19/FR-21).
+* :func:`write_video` — the video container (FR-17/FR-19): one frame per CSV
+  row, in row order; error rows keep black placeholder frames until the
+  error-banner ticket.
 * :func:`main` — argument handling and the whole-run pipeline (FR-1, FR-2).
 
 Canonical coordinate space is voxel-index space, per
@@ -25,7 +30,7 @@ from __future__ import annotations
 import csv
 import math
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import cast
@@ -329,6 +334,138 @@ def parse_planes(path: str | Path) -> list[Plane | PlaneError]:
 
 
 # ---------------------------------------------------------------------------
+# Frame rendering (FR-12, FR-13; geometry pinned in docs/algorithm.md)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Frame:
+    """One rendered plane projection, display-scaled to grayscale uint8.
+
+    ``image`` is the frame at its own density-derived size (H = round(leg),
+    W = round(base)); canvas padding is a separate assembler step (FR-18).
+    """
+
+    row: int
+    image: np.ndarray
+
+
+def _display_scale(values: np.ndarray, dtype: np.dtype) -> np.ndarray:
+    """Map integer voxel values over the dtype's full range to uint8 (FR-12e).
+
+    No content-based stretching: unsigned values use ``0..dtype_max``; signed
+    values (tolerated per FR-4) use ``dtype_min..dtype_max``. Missing samples
+    are not scaled by this helper - the caller leaves them black (FR-12d).
+    """
+    info = np.iinfo(dtype)
+    lo, hi = info.min, info.max
+    if hi == lo:
+        return np.zeros(values.shape, dtype=np.uint8)
+    scaled = np.rint((values.astype(np.float64) - lo) * (255.0 / (hi - lo)))
+    return scaled.astype(np.uint8)
+
+
+def _plane_corners(plane: Plane) -> tuple[Point, Point, Point, Point]:
+    """The plane's ``(a1, a2, b, c)`` corners, with a triangle folded in (FR-8).
+
+    A 3-point plane is the 4-point geometry with ``a1 == a2 == a``; its top
+    width is zero and rows widen linearly to the base.
+    """
+    if plane.is_trapezoid:
+        return (plane.points[0], plane.points[1], plane.points[2], plane.points[3])
+    a, b, c = plane.points
+    return (a, a, b, c)
+
+
+def _render_plane(volume: np.ndarray, plane: Plane) -> Frame:
+    """Render one validated plane as a display-scaled 2D uint8 frame (FR-12).
+
+    Analytic geometry, no accumulation (docs/algorithm.md): row ``y`` samples
+    leg parameter ``t_y = (y + 1) / H``; column ``x`` samples the row at pixel
+    centre offset ``x + 0.5 - W/2`` from the row's centre. Samples outside the
+    plane's row span are black; samples outside ``M`` are black (FR-12d).
+    Nearest voxel lookup is ``np.rint`` (half-to-even, FR-12a) and is resolved
+    with a boolean in-bounds mask *before* fancy indexing, so every index
+    handed to numpy is guaranteed in range.
+    """
+    a1, a2, b, c = _plane_corners(plane)
+    leg = (_dist(a1, b) + _dist(a2, c)) / 2.0
+    base = _dist(b, c)
+    height = max(1, int(np.rint(leg)))
+    width = max(1, int(np.rint(base)))
+
+    a1v, a2v = np.asarray(a1), np.asarray(a2)
+    bv, cv = np.asarray(b), np.asarray(c)
+    t = (np.arange(height) + 1.0) / height
+    left = a1v + t[:, None] * (bv - a1v)
+    right = a2v + t[:, None] * (cv - a2v)
+
+    centre = (left + right) / 2.0
+    direction = right - left
+    row_width = np.linalg.norm(direction, axis=1)
+    unit = np.zeros_like(direction)
+    np.divide(direction, row_width[:, None], out=unit, where=row_width[:, None] != 0)
+
+    offsets = np.arange(width) + 0.5 - width / 2.0
+    samples = centre[:, None, :] + offsets[None, :, None] * unit[:, None, :]
+    inside = np.abs(offsets)[None, :] <= row_width[:, None] / 2.0 + 1e-9
+
+    voxel = np.rint(samples).astype(np.intp)
+    shape = np.asarray(volume.shape)
+    in_volume = np.all((voxel >= 0) & (voxel < shape), axis=2)
+    valid = inside & in_volume
+
+    image = np.zeros((height, width), dtype=np.uint8)
+    if np.any(valid):
+        xi, yi, zi = (voxel[valid, axis] for axis in range(3))
+        image[valid] = _display_scale(volume[xi, yi, zi], volume.dtype)
+    return Frame(row=plane.row, image=image)
+
+
+def render_frames(
+    volume: np.ndarray, records: Sequence[Plane | PlaneError]
+) -> list[Frame | PlaneError]:
+    """Render validated rows and pass error rows through, in list order (FR-17).
+
+    This is the single render seam: the CLI and every renderer test call it.
+    Error rows stay :class:`PlaneError` records; the CLI renders their
+    placeholder frames (error visuals belong to the error-frame ticket).
+    """
+    return [record if isinstance(record, PlaneError) else _render_plane(volume, record)
+            for record in records]
+
+
+def canvas_size(records: Sequence[Frame | PlaneError]) -> tuple[int, int]:
+    """The video's fixed canvas ``(width, height)`` (FR-18, FR-19).
+
+    The max width/height across renderable frames, rounded up to even so the
+    yuv420p-style encoder accepts it. When no row renders (all errors, FR-20)
+    there is no frame to measure, so the placeholder canvas carries the video.
+    """
+    frames = [record.image for record in records if isinstance(record, Frame)]
+    if not frames:
+        return PLACEHOLDER_CANVAS
+    width = max(image.shape[1] for image in frames)
+    height = max(image.shape[0] for image in frames)
+    return (width + width % 2, height + height % 2)
+
+
+def pad_frame(image: np.ndarray, canvas: tuple[int, int]) -> np.ndarray:
+    """Place ``image`` top-left on a black canvas ``(width, height)`` (FR-18).
+
+    Padding is background black with no aspect compensation (FR-21); a frame
+    larger than the canvas is an internal error, never silently cropped.
+    """
+    width, height = canvas
+    if image.shape[0] > height or image.shape[1] > width:
+        raise ValueError(
+            f"frame {image.shape[1]}x{image.shape[0]} is larger than canvas {width}x{height}"
+        )
+    padded = np.zeros((height, width), dtype=np.uint8)
+    padded[: image.shape[0], : image.shape[1]] = image
+    return padded
+
+
+# ---------------------------------------------------------------------------
 # Plane-list counting (FR-17 groundwork; superseded body: one record per row)
 # ---------------------------------------------------------------------------
 
@@ -336,8 +473,8 @@ def count_planes(path: str | Path) -> int:
     """Count the CSV plane-list's data rows (the header row is excluded).
 
     Full parsing/validation of each row lives in :func:`parse_planes`; the
-    count is simply one record per non-empty row, so the placeholder video
-    keeps one frame per row, in row order (FR-17). Tolerant already of
+    count is simply one record per non-empty row, so the video keeps one
+    frame per row, in row order (FR-17). Tolerant already of
     what the corpus provides: integer- or float-coordinate cells and a
     missing trailing newline (FR-9); rows that are entirely empty are not
     planes.
@@ -350,11 +487,10 @@ def count_planes(path: str | Path) -> int:
 # arrives with the renderer — encoder choice: docs/adr/0003)
 # ---------------------------------------------------------------------------
 
-#: Placeholder canvas (width, height) in pixels, until the renderer computes
-#: the real one (max width/height across the CSV's renderable frames, FR-18).
-#: Placeholder only — derived from no plane; the CSV drives row count here,
-#: nothing else. Both are even so the yuv420p pixel format is satisfied
-#: (FR-19).
+#: Fallback canvas (width, height) when a CSV has no renderable row at all
+#: (every row an error, FR-20). Real runs use :func:`canvas_size` (the max
+#: width/height across renderable frames, FR-18). Both dimensions are even so
+#: the yuv420p pixel format is satisfied (FR-19).
 PLACEHOLDER_CANVAS = (256, 256)
 
 #: Container rate, in frames/second (FR-19). A container choice only —
@@ -364,25 +500,22 @@ VIDEO_FPS = 30
 
 def write_video(
     out_path: str | Path,
-    n_frames: int,
+    frames: Iterable[np.ndarray],
     canvas: tuple[int, int],
     fps: int = VIDEO_FPS,
 ) -> None:
-    """Write ``n_frames`` black placeholder frames at the given canvas (W, H).
+    """Write 2D uint8 ``frames`` of one fixed ``canvas`` (W, H) to mp4 (FR-17).
 
-    One black frame per CSV row at a uniform canvas stands in for the real
-    projections (the renderer ticket replaces their content; FR-18's real
-    canvas likewise). The container contract (FR-19) is final from this
-    ticket on: uniform frame size, 30 FPS container rate, mp4, MPEG-4 Part 2
-    (``mp4v``), even dimensions (yuv420p-style chroma subsampling compatibility).
+    Frames are written in iteration order (one per CSV row), converted from
+    grayscale to the writer's 3-channel BGR. The container contract (FR-19)
+    is: uniform frame size, 30 FPS container rate, mp4, MPEG-4 Part 2
+    (``mp4v``), even dimensions (yuv420p-style chroma subsampling
+    compatibility). The encoder is OpenCV's ``cv2.VideoWriter`` with the
+    ``mp4v`` fourcc — see docs/adr/0004-video-encoding-via-opencv-mp4v.md.
 
-    The encoder is OpenCV's ``cv2.VideoWriter`` with the ``mp4v`` fourcc —
-    see docs/adr/0004-video-encoding-via-opencv-mp4v.md: pip-installable
-    everywhere (supersedes the ffmpeg-CLI choice of ADR 0003, whose system
-    binary requirement is gone).
+    A generator is accepted, so the CLI can assemble one canvas frame at a
+    time instead of retaining the whole video.
     """
-    if n_frames < 0:
-        raise UsageError(f"cannot write video '{out_path}': negative frame count {n_frames}")
     width, height = canvas
     if width <= 0 or height <= 0:
         raise UsageError(f"cannot write video '{out_path}': canvas {canvas!r} must be positive")
@@ -405,9 +538,13 @@ def write_video(
             " (check the output path is writable and the mp4v codec is available)"
         )
     try:
-        black_frame = np.zeros((height, width, 3), dtype=np.uint8)
-        for _ in range(n_frames):
-            writer.write(black_frame)
+        for frame in frames:
+            if frame.shape != (height, width):
+                raise ValueError(
+                    f"frame size {frame.shape[1]}x{frame.shape[0]} does not match canvas"
+                    f" {width}x{height}"
+                )
+            writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
     finally:
         writer.release()  # flush and close the container even on write failure
 
@@ -434,9 +571,18 @@ def main(argv: list[str] | None = None) -> int:
 
     volume_path, plane_list_path, video_path = argv
     try:
-        load_volume(volume_path)
+        volume = load_volume(volume_path)
         records = parse_planes(plane_list_path)
-        write_video(video_path, len(records), canvas=PLACEHOLDER_CANVAS, fps=VIDEO_FPS)
+        rendered = render_frames(volume, records)
+        canvas = canvas_size(rendered)
+        empty = np.zeros((0, 0), dtype=np.uint8)
+        write_video(
+            video_path,
+            (pad_frame(record.image if isinstance(record, Frame) else empty, canvas)
+             for record in rendered),
+            canvas=canvas,
+            fps=VIDEO_FPS,
+        )
     except UsageError as e:
         print(f"Ex0.py: {e}", file=sys.stderr)
         return 1
@@ -452,9 +598,8 @@ def main(argv: list[str] | None = None) -> int:
 
     errors = sum(isinstance(r, PlaneError) for r in records)
     print(
-        f"wrote {len(records)} placeholder frames ({PLACEHOLDER_CANVAS[0]}x"
-        f"{PLACEHOLDER_CANVAS[1]}, mp4v @{VIDEO_FPS} fps) to '{video_path}'"
-        f" ({errors} error row(s))"
+        f"wrote {len(records)} frames ({canvas[0]}x{canvas[1]}, mp4v @{VIDEO_FPS} fps)"
+        f" to '{video_path}' ({errors} error row(s))"
     )
     return 0
 

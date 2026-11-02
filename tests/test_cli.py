@@ -103,10 +103,11 @@ def test_rejecting_volume_happens_before_counting(tmp_path, capsys, tmp_nrrd):
     reason="corpus assets unavailable",
 )
 def test_brief_command_on_lecturer_example(tmp_path, capsys):
-    # SRS §5.3.1 groundwork: the exact brief command runs without a traceback
-    # and yields one placeholder frame per CSV row (rows → frames 1:1), on the
-    # volume the lecturer encourages. Error frames for the flagged rows arrive
-    # with the error-frame ticket; here the video decodes to 4 uniform frames.
+    # SRS §5.3.1 groundwork: the exact brief command renders valid rows and
+    # keeps one frame per CSV row (FR-17), on the volume the lecturer
+    # encourages. Rows 1-2 render projections at the max frame size
+    # (500x447 -> even 500x448); rows 3-4 keep black placeholder frames
+    # until the error-frame ticket adds their banners.
     out = tmp_path / "out.mp4"
     code = Ex0.main(
         [str(ASSETS / "nrrd" / "MRHead_1.nrrd"), str(ASSETS / "csv" / "lecturer_example.csv"), str(out)]
@@ -117,25 +118,68 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
 
     capture = cv2.VideoCapture(str(out))
     assert capture.isOpened()
-    frame_count = 0
-    while capture.read()[0]:
-        frame_count += 1
-    assert frame_count == 4
+    frames = []
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        frames.append(frame)
+    assert len(frames) == 4
     assert capture.get(cv2.CAP_PROP_FPS) == 30
-    assert capture.get(cv2.CAP_PROP_FRAME_WIDTH) == 256
-    assert capture.get(cv2.CAP_PROP_FRAME_HEIGHT) == 256
+    assert capture.get(cv2.CAP_PROP_FRAME_WIDTH) == 500
+    assert capture.get(cv2.CAP_PROP_FRAME_HEIGHT) == 448
     capture.release()
+
+    # MRHead is int16 0..279: full-range display scaling puts its in-volume
+    # samples around mid gray, visibly distinct from the black placeholder of
+    # error rows (the planes extend past the volume, so most of each frame is
+    # black by FR-12d). Lossy mp4v keeps that separation comfortably.
+    assert frames[0].max() > 100 and frames[1].max() > 100
+    assert frames[2].max() < 16 and frames[3].max() < 16
 
     # FR-16 groundwork: per-row verdicts are logged to the CLI with the same
     # content the future error banners will carry. lecturer_example's rows
     # 3 and 4 fail validation (isosceles 20.53; legs 100) and are logged to
     # stderr while the run continues; rows 1-2 are ok on stdout.
-    assert "wrote 4 placeholder frames" in captured.out
+    assert "wrote 4 frames (500x448" in captured.out
     assert captured.out.count("ok (") == 2
     err_lines = captured.err.strip().splitlines()
     assert len(err_lines) == 2
     assert err_lines[0].startswith("Ex0.py: row 3: |dist(a,b) − dist(a,c)| = 20.5")
     assert err_lines[1].startswith("Ex0.py: row 4: |dist(a1,b) − dist(a2,c)| = 100")
+
+
+@pytest.mark.parametrize(
+    ("csv_name", "volume_name", "frames", "canvas"),
+    [
+        ("croissant.csv", "croissant", 100, (500, 560)),
+        ("onion.csv", "onion", 120, (256, 256)),
+        ("head.csv", "MRHead_1", 280, (256, 256)),
+    ],
+)
+def test_corpus_run_produces_a_video_with_real_content(
+    tmp_path, capsys, csv_name, volume_name, frames, canvas
+):
+    # SRS §5.3.2/§5.3.4 groundwork: the corpus pairs run end-to-end, one
+    # frame per row at the shared even canvas. Croissant is the large case
+    # (500x559 -> 500x560); head/onion pad 255 -> 256.
+    out = tmp_path / f"{csv_name}.mp4"
+    code = Ex0.main(
+        [str(ASSETS / "nrrd" / f"{volume_name}.nrrd"), str(ASSETS / "csv" / csv_name), str(out)]
+    )
+    captured = capsys.readouterr()
+    assert code == 0, captured.err
+    assert f"wrote {frames} frames ({canvas[0]}x{canvas[1]}" in captured.out
+
+    capture = cv2.VideoCapture(str(out))
+    assert capture.isOpened()
+    assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == frames
+    assert (int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))) == canvas
+    ok, frame = capture.read()
+    capture.release()
+    assert ok
+    assert frame.max() > 0  # the decoded video carries rendered content
 
 
 def test_brief_command_via_actual_python_invocation(tmp_path):
