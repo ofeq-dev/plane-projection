@@ -150,19 +150,20 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
 
 
 @pytest.mark.parametrize(
-    ("csv_name", "volume_name", "frames", "canvas"),
+    ("csv_name", "volume_name", "frames", "frame_shape", "canvas"),
     [
-        ("croissant.csv", "croissant", 100, (500, 560)),
-        ("onion.csv", "onion", 120, (256, 256)),
-        ("head.csv", "MRHead_1", 280, (256, 256)),
+        ("croissant.csv", "croissant", 100, (559, 500), (500, 560)),
+        ("onion.csv", "onion", 120, (255, 255), (256, 256)),
+        ("head.csv", "MRHead_1", 280, (255, 255), (256, 256)),
     ],
 )
 def test_corpus_run_produces_a_video_with_real_content(
-    tmp_path, capsys, csv_name, volume_name, frames, canvas
+    tmp_path, capsys, csv_name, volume_name, frames, frame_shape, canvas
 ):
     # SRS §5.3.2/§5.3.4 groundwork: the corpus pairs run end-to-end, one
     # frame per row at the shared even canvas. Croissant is the large case
-    # (500x559 -> 500x560); head/onion pad 255 -> 256.
+    # (500x559 -> 500x560); head/onion pad 255 -> 256. The padding band stays
+    # black after encoding (FR-18).
     out = tmp_path / f"{csv_name}.mp4"
     code = Ex0.main(
         [str(ASSETS / "nrrd" / f"{volume_name}.nrrd"), str(ASSETS / "csv" / csv_name), str(out)]
@@ -180,6 +181,9 @@ def test_corpus_run_produces_a_video_with_real_content(
     capture.release()
     assert ok
     assert frame.max() > 0  # the decoded video carries rendered content
+    height, width = frame_shape
+    assert frame[height:, :].max(initial=0) < 16  # bottom padding band
+    assert frame[:, width:].max(initial=0) < 16  # right padding band
 
 
 def test_brief_command_via_actual_python_invocation(tmp_path):

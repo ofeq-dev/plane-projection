@@ -15,21 +15,9 @@ import numpy as np
 import pytest
 
 import Ex0
-from render_cases import CASES
+from render_cases import CASES, ramp_volume, short_ramp_volume
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
-
-
-def ramp_volume(shape, axis=0):
-    """Volume whose value at every voxel is its index along ``axis``.
-
-    uint8 + identity display scaling means a rendered pixel's value *is* the
-    sampled index on that axis - hand-checkable without re-running geometry.
-    """
-    index = np.arange(shape[axis], dtype=np.uint8)
-    view = [1, 1, 1]
-    view[axis] = shape[axis]
-    return np.broadcast_to(index.reshape(view), shape).copy()
 
 
 def frame_of(volume, points):
@@ -214,6 +202,25 @@ def test_rounding_ties_use_half_to_even():
         [0, 2, 2, 0],
         [2, 2, 2, 2],
         [2, 2, 2, 2],
+    ]
+
+
+def test_short_dtype_scales_over_the_full_signed_range():
+    # int16 volume with x-values min(-32768), 0, max(32767), +100, -100.
+    # Triangle a=(2,0,0), b=(-0.5,4,0), c=(4.5,4,0): legs sqrt(22.25)=4.72
+    # -> 5 rows; base 5 -> 5 columns. Rows widen 1,2,3,4,5 units; samples are
+    # consecutive integer x at the bottom, so the full signed range is visibly
+    # distinct: 0, 128, 255, 128, 127 (FR-12e).
+    frame = frame_of(
+        short_ramp_volume((5, 5, 1)),
+        [(2, 0, 0), (-0.5, 4, 0), (4.5, 4, 0)],
+    )
+    assert frame.image.tolist() == [
+        [0, 0, 255, 0, 0],
+        [0, 128, 255, 128, 0],
+        [0, 128, 255, 128, 0],
+        [0, 128, 255, 128, 127],
+        [0, 128, 255, 128, 127],
     ]
 
 

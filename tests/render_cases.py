@@ -26,6 +26,12 @@ def ramp_volume(shape: tuple[int, int, int], axis: int = 0) -> np.ndarray:
     return np.broadcast_to(index.reshape(view), shape).copy()
 
 
+def short_ramp_volume(shape: tuple[int, int, int]) -> np.ndarray:
+    """int16 volume with one hand-chosen value per x: min, 0, max, +100, -100."""
+    values = np.array([-32768, 0, 32767, 100, -100], dtype=np.int16)
+    return np.broadcast_to(values[:, None, None], shape).copy()
+
+
 @dataclass(frozen=True)
 class RenderCase:
     name: str
@@ -58,5 +64,11 @@ CASES: tuple[RenderCase, ...] = (
         volume=ramp_volume((3, 6, 7)),
         points=((2.5, 2, 0), (2.5, 0, 6), (2.5, 4, 6)),
         note="all samples land on x=2.5: np.rint -> even neighbour 2, not 3",
+    ),
+    RenderCase(
+        name="short_scaling",
+        volume=short_ramp_volume((5, 5, 1)),
+        points=((2, 0, 0), (-0.5, 4, 0), (4.5, 4, 0)),
+        note="int16 min/0/max/+100/-100 -> 0/128/255/128/127, full signed range",
     ),
 )

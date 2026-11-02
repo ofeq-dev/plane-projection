@@ -349,14 +349,14 @@ class Frame:
     image: np.ndarray
 
 
-def _display_scale(values: np.ndarray, dtype: np.dtype) -> np.ndarray:
-    """Map integer voxel values over the dtype's full range to uint8 (FR-12e).
+def _display_scale(values: np.ndarray) -> np.ndarray:
+    """Map integer voxel values over their dtype's full range to uint8 (FR-12e).
 
     No content-based stretching: unsigned values use ``0..dtype_max``; signed
     values (tolerated per FR-4) use ``dtype_min..dtype_max``. Missing samples
     are not scaled by this helper - the caller leaves them black (FR-12d).
     """
-    info = np.iinfo(dtype)
+    info = np.iinfo(values.dtype)
     lo, hi = info.min, info.max
     if hi == lo:
         return np.zeros(values.shape, dtype=np.uint8)
@@ -407,17 +407,17 @@ def _render_plane(volume: np.ndarray, plane: Plane) -> Frame:
 
     offsets = np.arange(width) + 0.5 - width / 2.0
     samples = centre[:, None, :] + offsets[None, :, None] * unit[:, None, :]
-    inside = np.abs(offsets)[None, :] <= row_width[:, None] / 2.0 + 1e-9
+    in_row = np.abs(offsets)[None, :] <= row_width[:, None] / 2.0 + 1e-9
 
     voxel = np.rint(samples).astype(np.intp)
     shape = np.asarray(volume.shape)
     in_volume = np.all((voxel >= 0) & (voxel < shape), axis=2)
-    valid = inside & in_volume
+    valid = in_row & in_volume
 
     image = np.zeros((height, width), dtype=np.uint8)
     if np.any(valid):
         xi, yi, zi = (voxel[valid, axis] for axis in range(3))
-        image[valid] = _display_scale(volume[xi, yi, zi], volume.dtype)
+        image[valid] = _display_scale(volume[xi, yi, zi])
     return Frame(row=plane.row, image=image)
 
 
@@ -513,8 +513,8 @@ def write_video(
     compatibility). The encoder is OpenCV's ``cv2.VideoWriter`` with the
     ``mp4v`` fourcc — see docs/adr/0004-video-encoding-via-opencv-mp4v.md.
 
-    A generator is accepted, so the CLI can assemble one canvas frame at a
-    time instead of retaining the whole video.
+    A generator is accepted so canvas-sized padded copies are transient;
+    :func:`render_frames` itself returns one record per row up front.
     """
     width, height = canvas
     if width <= 0 or height <= 0:
@@ -575,10 +575,12 @@ def main(argv: list[str] | None = None) -> int:
         records = parse_planes(plane_list_path)
         rendered = render_frames(volume, records)
         canvas = canvas_size(rendered)
-        empty = np.zeros((0, 0), dtype=np.uint8)
+        # Error rows stay placeholder-black until the error-banner ticket:
+        # pad_frame turns the empty image into a full black canvas.
+        blank = np.zeros((0, 0), dtype=np.uint8)
         write_video(
             video_path,
-            (pad_frame(record.image if isinstance(record, Frame) else empty, canvas)
+            (pad_frame(record.image if isinstance(record, Frame) else blank, canvas)
              for record in rendered),
             canvas=canvas,
             fps=VIDEO_FPS,
