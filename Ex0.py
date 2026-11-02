@@ -13,19 +13,22 @@ Ticket 1 pieces (requirements are normative in ``docs/srs.md``):
 * :func:`main` — argument handling and the whole-run pipeline (FR-1, FR-2).
 
 Canonical coordinate space is voxel-index space, per
-``docs/adr/0002-canonical-voxel-index-space.md``; H.264 encoding via the
-system ffmpeg CLI per ``docs/adr/0003-video-encoding-via-ffmpeg-cli.md``.
+``docs/adr/0002-canonical-voxel-index-space.md``; video encoding via OpenCV's
+``cv2.VideoWriter`` (``mp4v`` codec) per
+``docs/adr/0004-video-encoding-via-opencv-mp4v.md`` (superseding ADR 0003's
+ffmpeg-CLI choice — everything stays pip-installable, no system binary).
 """
 
 from __future__ import annotations
 
 import csv
-import shutil
-import subprocess
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import cast
 from pathlib import Path
 
+import cv2
 import numpy as np
 import nrrd
 
@@ -45,7 +48,7 @@ def _require_file(label: str, path: Path) -> None:
 
 
 @contextmanager
-def _os_errors_as_usage(label: str, path: Path):
+def _os_errors_as_usage(label: str, path: Path) -> Iterator[None]:
     """Convert file-access OS errors into one-line usage errors (FR-2)."""
     try:
         yield
@@ -114,7 +117,8 @@ def load_volume(path: str | Path) -> np.ndarray:
             f" uint8/uint16/uint32 (the brief's 8/16/32-bit unsigned contract) or a"
             f" signed integer type (tolerated), per FR-4"
         )
-    return data
+    # nrrd.read is untyped (mypy: Any); it always returns an ndarray here.
+    return cast(np.ndarray, data)
 
 
 # ---------------------------------------------------------------------------
@@ -175,13 +179,13 @@ def write_video(
     One black frame per CSV row at a uniform canvas stands in for the real
     projections (the renderer ticket replaces their content; FR-18's real
     canvas likewise). The container contract (FR-19) is final from this
-    ticket on: uniform frame size, 30 FPS container rate, mp4, H.264/AVC,
-    even dimensions (yuv420p codec compatibility).
+    ticket on: uniform frame size, 30 FPS container rate, mp4, MPEG-4 Part 2
+    (``mp4v``), even dimensions (yuv420p-style chroma subsampling compatibility).
 
-    The encoder is the system ``ffmpeg`` CLI (rawvideo/rgb24 piped on stdin),
-    not OpenCV's VideoWriter — see docs/adr/0003-video-encoding-via-ffmpeg-cli.md:
-    opencv-python's bundled ffmpeg build cannot encode H.264, and FR-19
-    demands a genuine H.264 fourcc.
+    The encoder is OpenCV's ``cv2.VideoWriter`` with the ``mp4v`` fourcc —
+    see docs/adr/0004-video-encoding-via-opencv-mp4v.md: pip-installable
+    everywhere (supersedes the ffmpeg-CLI choice of ADR 0003, whose system
+    binary requirement is gone).
     """
     if n_frames < 0:
         raise UsageError(f"cannot write video '{out_path}': negative frame count {n_frames}")
@@ -189,75 +193,29 @@ def write_video(
     if width <= 0 or height <= 0:
         raise UsageError(f"cannot write video '{out_path}': canvas {canvas!r} must be positive")
     if width % 2 or height % 2:
-        # yuv420p chroma subsampling requires even dimensions (FR-19); the
-        # ffmpeg CLI would silently crop odd frames instead (FR-19's point).
+        # Chroma-subsampling encoders require even dimensions (FR-19); rejecting
+        # up front avoids a silently wrong container later.
         raise UsageError(
             f"cannot write video '{out_path}': canvas {canvas!r} must have even dimensions"
         )
-    if shutil.which("ffmpeg") is None:
-        raise UsageError(
-            f"cannot write video '{out_path}': ffmpeg not found on PATH"
-            " (H.264 encoding relies on it; see docs/adr/0003-video-encoding-via-ffmpeg-cli.md)"
-        )
 
-    command = [
-        "ffmpeg",
-        "-y",  # overwrite an existing output file
-        "-hide_banner",
-        "-loglevel", "error",
-        # stdin rawvideo: one frame = canvas pixels of rgb24 bytes, row-major
-        "-f", "rawvideo",
-        "-pix_fmt", "rgb24",
-        "-s", f"{width}x{height}",
-        "-r", str(fps),
-        "-i", "pipe:0",
-        "-an",  # no audio track
-        "-c:v", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",  # moov first: progressively playable mp4
+    writer = cv2.VideoWriter(
         str(out_path),
-    ]
-    black_frame = np.zeros((height, width, 3), dtype=np.uint8)
-    try:
-        process = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-        )
-    except OSError as e:
-        raise UsageError(f"cannot write video '{out_path}': ffmpeg failed to start: {e}") from e
-
-    stdin = process.stdin
-    stderr = process.stderr
-    if stdin is None or stderr is None:  # unreachable with stdin/stderr=PIPE
-        raise UsageError(f"cannot write video '{out_path}': encoder did not open its pipes")
-
-    try:
-        for _ in range(n_frames):
-            stdin.write(black_frame.tobytes())
-        stdin.close()
-    except BrokenPipeError as e:
-        _raise_encoder_failure(out_path, process, e)
-    except OSError as e:
-        raise UsageError(f"cannot write video '{out_path}': {e}") from e
-
-    stderr_tail = stderr.read().decode(errors="replace").strip()
-    return_code = process.wait()
-    if return_code != 0:
-        reason = " ".join(stderr_tail.replace("\n", " | ").split())[:300]
+        cv2.VideoWriter_fourcc(*"mp4v"),  # type: ignore[attr-defined]  # stubs omit it
+        fps,
+        (width, height),
+    )
+    if not writer.isOpened():
         raise UsageError(
-            f"cannot write video '{out_path}': ffmpeg exited with status {return_code}"
-            + (f": {reason}" if reason else "")
+            f"cannot write video '{out_path}': cv2.VideoWriter could not be opened"
+            " (check the output path is writable and the mp4v codec is available)"
         )
-
-
-def _raise_encoder_failure(
-    out_path: str | Path, process: subprocess.Popen, cause: Exception
-) -> None:
-    """Report an encoder that stopped reading frames before the run finished."""
-    return_code = process.wait()
-    raise UsageError(
-        f"cannot write video '{out_path}': ffmpeg stopped accepting frames"
-        f" (exit status {return_code})"
-    ) from cause
+    try:
+        black_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        for _ in range(n_frames):
+            writer.write(black_frame)
+    finally:
+        writer.release()  # flush and close the container even on write failure
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         f"wrote {plane_count} placeholder frames ({PLACEHOLDER_CANVAS[0]}x"
-        f"{PLACEHOLDER_CANVAS[1]}, H.264 @{VIDEO_FPS} fps) to '{video_path}'"
+        f"{PLACEHOLDER_CANVAS[1]}, mp4v @{VIDEO_FPS} fps) to '{video_path}'"
     )
     return 0
 

@@ -1,3 +1,4 @@
+- **Status:** Superseded by [ADR 0004](0004-video-encoding-via-opencv-mp4v.md) (PR #7 review: switch to `mp4v` via OpenCV).
 # ADR-0003: H.264 encoding via the system ffmpeg CLI
 
 - **Date**: 2026-11-02

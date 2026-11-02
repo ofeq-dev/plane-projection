@@ -6,8 +6,9 @@ exercise brief: `I2SE_Exe1.docx`).
 
 ## Build & run
 
-Python ≥ 3.10 (exercised on 3.12), plus the system `ffmpeg` CLI on PATH for
-H.264 encoding ([ADR 0003](docs/adr/0003-video-encoding-via-ffmpeg-cli.md)):
+Python ≥ 3.10 (exercised on 3.12). Video encoding uses OpenCV's `cv2.VideoWriter`
+with the `mp4v` codec — everything is pip-installable, no system binary needed
+([ADR 0004](docs/adr/0004-video-encoding-via-opencv-mp4v.md)):
 
 ```sh
 python -m venv .venv && . .venv/bin/activate

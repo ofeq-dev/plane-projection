@@ -122,9 +122,11 @@ this SRS pins what the tool must accept, produce, and how fast.
   frame size is a hard requirement of the mp4 writer
   ([`cv::VideoWriter.write()`](https://docs.opencv.org/4.x/dd/d9e/classcv_1_1VideoWriter.html)):
   each written frame "must have the same size as has been specified when opening".
-- **FR-19** Encoding: 30 FPS, H.264-compatible fourcc, mp4 container, canvas dimensions
-  made codec-compatible (even, per the writer's truncation behavior). The 30 figures is
-  a *container* choice only — decoupled from rendering throughput (§4).
+- **FR-19** Encoding: 30 FPS, MPEG-4 Part 2 (`mp4v`) fourcc, mp4 container, canvas
+  dimensions made codec-compatible (even, per the writer's truncation behavior). The 30
+  figures is a *container* choice only — decoupled from rendering throughput (§4).
+  H.264 was originally required (ADR 0003) but was dropped for the pip-only dependency
+  policy (see [ADR 0004](adr/0004-video-encoding-via-opencv-mp4v.md)).
 - **FR-20** The output file is written even if every row errored (a video of error
   frames communicates the failure better than an empty/absent file).
 - **FR-21** Aspect compensation of padding is *not* applied: padding is background
