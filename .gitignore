@@ -1,0 +1,9 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+
+# Throwaway CLI runs (committed output videos arrive via LFS, per ADR-0001)
+out*.mp4
