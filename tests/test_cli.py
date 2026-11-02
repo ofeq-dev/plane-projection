@@ -105,8 +105,8 @@ def test_rejecting_volume_happens_before_counting(tmp_path, capsys, tmp_nrrd):
 def test_brief_command_on_lecturer_example(tmp_path, capsys):
     # SRS §5.3.1 groundwork: the exact brief command runs without a traceback
     # and yields one placeholder frame per CSV row (rows → frames 1:1), on the
-    # volume the lecturer encourages. Row-2's error frame arrives with the
-    # error-frame ticket; here the video decodes to 4 uniform frames.
+    # volume the lecturer encourages. Error frames for the flagged rows arrive
+    # with the error-frame ticket; here the video decodes to 4 uniform frames.
     out = tmp_path / "out.mp4"
     code = Ex0.main(
         [str(ASSETS / "nrrd" / "MRHead_1.nrrd"), str(ASSETS / "csv" / "lecturer_example.csv"), str(out)]
@@ -126,9 +126,16 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
     assert capture.get(cv2.CAP_PROP_FRAME_HEIGHT) == 256
     capture.release()
 
-    # stdout carries one summary line; nothing on stderr for the happy path.
+    # FR-16 groundwork: per-row verdicts are logged to the CLI with the same
+    # content the future error banners will carry. lecturer_example's rows
+    # 3 and 4 fail validation (isosceles 20.53; legs 100) and are logged to
+    # stderr while the run continues; rows 1-2 are ok on stdout.
     assert "wrote 4 placeholder frames" in captured.out
-    assert captured.err == ""
+    assert captured.out.count("ok (") == 2
+    err_lines = captured.err.strip().splitlines()
+    assert len(err_lines) == 2
+    assert err_lines[0].startswith("Ex0.py: row 3: |dist(a,b) − dist(a,c)| = 20.5")
+    assert err_lines[1].startswith("Ex0.py: row 4: |dist(a1,b) − dist(a2,c)| = 100")
 
 
 def test_brief_command_via_actual_python_invocation(tmp_path):
