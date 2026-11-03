@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plane projection — the algorithm, visualized</title>
+<style>
+  :root {
+    --paper: #f7f3ec;
+    --shade: #efe8dc;
+    --ink: #23272e;
+    --muted: #6a7280;
+    --panel: #12171e;
+    --panel-edge: #26303c;
+    --panel-ink: #e8edf3;
+    --panel-muted: #93a1b0;
+    --accent: #0d7a8c;
+    --c-top-left: #9a4fbd;
+    --c-top-right: #c6571f;
+    --c-bottom-left: #0d7a8c;
+    --c-bottom-right: #557a2b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 2.2rem 1.2rem 4rem; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .35rem; }
+  .lede { color: var(--muted); margin: 0 0 2rem; max-width: 62ch; }
+  h2 { font-size: 1.15rem; margin: 2.6rem 0 .6rem; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { font-size: .92em; background: var(--shade); padding: .08em .3em; border-radius: 4px; }
+  p { max-width: 68ch; }
+  a { color: var(--accent); }
+
+  /* corner-name chips (dark-on-light tint hints of the walkthrough's palette) */
+  .chip { display: inline-block; padding: .05rem .5rem; border-radius: 999px;
+          color: #fff; font-size: .85em; white-space: nowrap; }
+  .tl { background: var(--c-top-left); }
+  .tr { background: var(--c-top-right); }
+  .bl { background: var(--c-bottom-left); }
+  .br { background: var(--c-bottom-right); }
+
+  /* walkthrough */
+  .walkthrough {
+    background: var(--panel);
+    color: var(--panel-ink);
+    border-radius: 12px;
+    padding: 1.1rem 1.2rem 1.3rem;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: .55rem; align-items: center; margin-bottom: .9rem; }
+  .controls button, .controls select {
+    font: inherit; font-size: .92rem; color: var(--panel-ink);
+    background: #1c242e; border: 1px solid var(--panel-edge);
+    border-radius: 8px; padding: .4rem .8rem; cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button:disabled { opacity: .45; cursor: default; }
+  .progress { color: var(--panel-muted); font-size: .9rem; margin-left: auto; }
+  .badge-ok { color: #7fd08a; font-weight: 600; }
+  .badge-fail { color: #ff8f8f; font-weight: 600; }
+
+  .panels { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1rem; }
+  @media (max-width: 800px) { .panels { grid-template-columns: 1fr; } }
+  .panel-title { font-size: .85rem; color: var(--panel-muted); margin: 0 0 .3rem; }
+  svg { display: block; max-width: 100%; height: auto; }
+  svg.sheet, svg.frame { background: #161d26; border: 1px solid var(--panel-edge); border-radius: 8px; }
+  svg.volume { width: 100%; background: #161d26; border: 1px solid var(--panel-edge); border-radius: 8px; }
+
+  .narration {
+    margin-top: .9rem; padding: .7rem .85rem;
+    background: #1c242e; border-radius: 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .88rem; min-height: 3.4em;
+  }
+  .hint { color: var(--panel-muted); font-size: .85rem; margin-top: .5rem; }
+
+  /* equations */
+  pre.equations {
+    background: var(--panel); color: var(--panel-ink);
+    padding: 1rem 1.2rem; border-radius: 12px; overflow-x: auto;
+    font-size: .87rem; line-height: 1.75;
+  }
+  .eq-name { color: #8fd6e2; }
+  .eq-comment { color: #7d8b99; }
+
+  table { border-collapse: collapse; max-width: 100%; }
+  th, td { border: 1px solid #d8d0c2; padding: .35rem .7rem; text-align: left; font-size: .92rem; }
+  th { background: var(--shade); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Plane projection — the algorithm, visualized</h1>
+  <p class="lede">
+    The companion to <a href="algorithm.md"><code>docs/algorithm.md</code></a>
+    (requirements: <a href="srs.md"><code>docs/srs.md</code></a>, FR-12/FR-13) — the same
+    algorithm, the same readable names, and the same numbers as its hand-checked
+    fixtures, playing out pixel by pixel.
+  </p>
+
+  <h2>In plain words</h2>
+  <p>
+    Think of the input volume as a block of small cubes, where every cube holds one
+    brightness number. A plane from the CSV is a flat triangle- or trapezoid-shaped sheet
+    placed inside (or reaching beyond) that block. For every pixel of the sheet the
+    renderer asks one question: <strong>which cube does this pixel sit closest to?</strong>
+    That cube's brightness number is copied into the pixel; pixels that miss the sheet, or
+    whose nearest cube lies outside the block, stay black.
+  </p>
+  <p>
+    Concretely: the sheet's size comes from the plane's corners — one pixel row per
+    voxel-length step down its two slanted edges (the legs), one pixel column per
+    voxel-length step across its base. Each row's two ends slide down those legs, so a
+    triangle's rows widen as you go down while a trapezoid's widen, then stay wide. Each
+    pixel of a row samples half a step to the side of the row's centre, keeping the row
+    symmetric about the middle. Sample points are rounded to the nearest cube — an exact
+    tie goes to the even side — and the cube's value is scaled to a 0..255 gray level over
+    the file's full value range, never stretched to the picture's own brightest value.
+  </p>
+  <p>
+    The animation below plays this out on two of the hand-checked fixtures from
+    <code>algorithm.md</code> (a triangle and a trapezoid, valued <code>volume[x][y][z] = x</code>,
+    so a pixel's number <em>is</em> the x-index of the cube it sampled):
+  </p>
+
+  <div class="walkthrough">
+    <div class="controls">
+      <label for="example" style="font-size:.9rem">Example:</label>
+      <select id="example"></select>
+      <button id="reset" title="Clear the frame and restart">⟲ reset</button>
+      <button id="play" title="Play / pause the animation">▸ play</button>
+      <button id="step-pixel" title="Fill in the next single pixel">next pixel ›</button>
+      <button id="step-row" title="Fill in the whole next row">next row ››</button>
+      <span class="progress" id="progress"></span>
+    </div>
+    <div class="panels">
+      <div>
+        <p class="panel-title">The sheet inside the volume — rows slide down the legs.</p>
+        <div id="sheet-box"></div>
+      </div>
+      <div>
+        <p class="panel-title">The frame — one cell per pixel; shading is the video's real gray.</p>
+        <div id="frame-box"></div>
+      </div>
+    </div>
+    <p class="panel-title" style="margin-top:1rem">Inside the volume — which cube does the pixel sample?</p>
+    <div id="volume-box"></div>
+    <div class="narration" id="narration"></div>
+    <p class="hint" id="hint">
+      “next pixel” steps one sample; each sample asks: outside the sheet's row span? nearest
+      cube outside the volume? otherwise copy that cube's value (here: its x-index).
+    </p>
+  </div>
+
+  <h2>The equations, with readable names</h2>
+  <p>Exactly the formulas of <code>algorithm.md</code> — the plain names are the ones the
+     code in <code>Ex0.py</code> uses.</p>
+  <pre class="equations" id="equations"></pre>
+  <p>
+    Historical footnote: earlier drafts wrote these as
+    <code>H = round(L)</code>, <code>W = round(B)</code>, <code>t<sub>y</sub></code>,
+    <code>L<sub>y</sub>/R<sub>y</sub></code>, <code>C<sub>y</sub></code>,
+    <code>w<sub>y</sub></code>, <code>u<sub>y</sub></code>, <code>o<sub>x</sub></code>
+    and <code>q<sub>x,y</sub></code> — compact, but mathematician-shaped.
+    <code>frame_height/row_fraction/left_edge/row_centre/row_width/row_direction/
+    offset_from_centre/sample_point</code> are the same quantities, named for readers.
+  </p>
+
+  <h2>Names used here</h2>
+  <table>
+    <tr><th>name</th><th>meaning</th><th>CSV letter(s)</th></tr>
+    <tr><td><span class="chip tl">top_left</span> / <span class="chip tr">top_right</span></td>
+        <td>the plane's two top corners (a triangle's top edge is collapsed to the single apex)</td>
+        <td><code>a1</code>, <code>a2</code> (triangle: <code>a</code>)</td></tr>
+    <tr><td><span class="chip bl">bottom_left</span> / <span class="chip br">bottom_right</span></td>
+        <td>the two bottom corners; the base runs between them</td><td><code>b</code>, <code>c</code></td></tr>
+    <tr><td><code>leg_length</code></td><td>mean of the two leg lengths (they agree within <code>EPS = 0.001</code>, FR-10)</td><td>—</td></tr>
+    <tr><td><code>base_length</code></td><td>distance between the bottom corners</td><td>—</td></tr>
+    <tr><td><code>frame_height</code> / <code>frame_width</code></td>
+        <td><code>round(leg_length)</code> / <code>round(base_length)</code>, clamped ≥ 1 (FR-12b)</td><td>—</td></tr>
+    <tr><td><code>row_index</code>, <code>row_fraction</code></td>
+        <td>which row, and how far down the legs it sits: <code>(row_index + 1) / frame_height</code></td><td>—</td></tr>
+    <tr><td><code>left_edge</code>, <code>right_edge</code>, <code>row_centre</code>, <code>row_width</code>, <code>row_direction</code></td>
+        <td>the row's ends, midpoint, length, and a one-unit sideways step</td><td>—</td></tr>
+    <tr><td><code>column_index</code>, <code>offset_from_centre</code></td>
+        <td>which pixel in the row; its signed distance from the row centre</td><td>—</td></tr>
+    <tr><td><code>sample_point</code>, <code>voxel_index</code></td>
+        <td>the pixel's 3D sample point; it rounded to whole indices (nearest cube, FR-12a)</td><td>—</td></tr>
+    <tr><td><code>volume</code></td><td>the 3D input array <code>volume[x][y][z]</code> (the brief's <code>M</code>) — each value an integer
+        stored at a fixed bit width (numpy's <em>dtype</em>, FR-4)</td><td><code>M[x][y][z]</code></td></tr>
+  </table>
+
+  <h2>Gray levels, not content-stretching</h2>
+  <p>
+    Every cube's number is an integer of a fixed width — 8, 16 or 32 bits, signed or
+    unsigned (numpy calls this the array's <em>dtype</em>, "data type"). Gray levels only
+    run 0..255, so values are mapped over the <em>type's</em> full span: an unsigned type
+    maps 0..its maximum (255 / 65535 / 4294967295) onto 0..255; a signed type maps its
+    minimum..maximum (e.g. −32768..32767) onto 0..255. The picture's own brightest value is
+    <em>never</em> the scale — a black-ish pixel really is black-ish in the video (FR-12e).
+  </p>
+
+  <p style="color:var(--muted); font-size:.9rem; margin-top:2.5rem">
+    The example's numbers are the committed fixtures of <code>algorithm.md</code> and the
+    byte-identical goldens in <code>tests/golden/</code>; the page self-checks its rendered
+    frames against those tables when the walk completes.
+  </p>
+</main>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Examples: the hand-checked fixtures of docs/algorithm.md
+// ---------------------------------------------------------------------------
+
+const EXAMPLES = {
+  triangle: {
+    label: "Triangle (2 rows × 4 columns)",
+    corners: { top_left: [2, 2, 0], top_right: [2, 2, 0],
+               bottom_left: [0, 2, 0], bottom_right: [4, 2, 0] },
+    volumeShape: [6, 5, 5],                       // ramp: value == x, x = 0..5
+    expected: [[0, 2, 2, 0], [0, 2, 2, 4]],
+  },
+  trapezoid: {
+    label: "Trapezoid (4 rows × 6 columns)",
+    corners: { top_left: [2, 2, 0], top_right: [4, 2, 0],
+               bottom_left: [0, 6, 0], bottom_right: [6, 6, 0] },
+    volumeShape: [8, 8, 5],                       // ramp: value == x, x = 0..7
+    expected: [[0, 2, 2, 4, 4, 0], [0, 2, 2, 4, 4, 0],
+               [0, 2, 2, 4, 4, 6], [0, 2, 2, 4, 4, 6]],
+  },
+};
+
+// Corner colors: light-on-dark variants of the chips' palette (used in the SVGs).
+const CORNER_COLORS = { top_left: "#c08ce0", top_right: "#e8a06c",
+                        bottom_left: "#5fc3d4", bottom_right: "#a9c97e" };
+const CSV_LETTER = { top_left: "a1", top_right: "a2",
+                     bottom_left: "b", bottom_right: "c" };
+
+// ---------------------------------------------------------------------------
+// The algorithm — the same names and formulas as docs/algorithm.md
+// ---------------------------------------------------------------------------
+
+// NumPy's rint: round to nearest, exact ties to the even side (FR-12a).
+function rint(value) {
+  const floor = Math.floor(value);
+  const fraction = value - floor;
+  if (fraction < 0.5) return floor;
+  if (fraction > 0.5) return floor + 1;
+  return floor % 2 === 0 ? floor : floor + 1;     // exact tie -> even side
+}
+
+const dist3 = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+
+const lerp3 = (start, end, fraction) =>
+  [0, 1, 2].map((axis) => start[axis] + (end[axis] - start[axis]) * fraction);
+
+// Build every sample of every row analytically (no step accumulation).
+function buildModel(example) {
+  const top_left = example.corners.top_left, top_right = example.corners.top_right;
+  const bottom_left = example.corners.bottom_left, bottom_right = example.corners.bottom_right;
+
+  const legLength = (dist3(top_left, bottom_left) + dist3(top_right, bottom_right)) / 2;
+  const baseLength = dist3(bottom_left, bottom_right);
+  const frameHeight = Math.max(1, rint(legLength));
+  const frameWidth = Math.max(1, rint(baseLength));
+
+  const rows = [];
+  for (let rowIndex = 0; rowIndex < frameHeight; rowIndex++) {
+    const rowFraction = (rowIndex + 1) / frameHeight;          // step before each row
+    const leftEdge = lerp3(top_left, bottom_left, rowFraction);
+    const rightEdge = lerp3(top_right, bottom_right, rowFraction);
+    const rowCentre = [0, 1, 2].map((axis) => (leftEdge[axis] + rightEdge[axis]) / 2);
+    const rowWidth = dist3(leftEdge, rightEdge);
+    const rowDirection = [0, 1, 2].map((axis) => (rightEdge[axis] - leftEdge[axis]) / rowWidth);
+
+    const pixels = [];
+    for (let columnIndex = 0; columnIndex < frameWidth; columnIndex++) {
+      const offsetFromCentre = columnIndex + 0.5 - frameWidth / 2;   // pixel centre
+      const samplePoint = [0, 1, 2].map(
+        (axis) => rowCentre[axis] + offsetFromCentre * rowDirection[axis]);
+      const voxelIndex = samplePoint.map(rint);
+      const insideRow = Math.abs(offsetFromCentre) <= rowWidth / 2 + 1e-9;
+      const insideVolume = [0, 1, 2].every(
+        (axis) => voxelIndex[axis] >= 0 && voxelIndex[axis] < example.volumeShape[axis]);
+      const inside = insideRow && insideVolume;
+      // Ramp volume: the cube's value equals its x -- so a filled pixel's gray level IS
+      // the sampled cube's x (uint8 identity scaling), and misses stay black.
+      const value = inside ? voxelIndex[0] : 0;
+      pixels.push({ offsetFromCentre, voxelIndex, inside, value });
+    }
+    rows.push({ rowFraction, leftEdge, rightEdge, rowWidth, pixels });
+  }
+  return { legLength, baseLength, frameHeight, frameWidth, rows };
+}
+
+// The rendered frame, and the complete pixel order (row-major, like the walk).
+function renderFrame(model) {
+  return model.rows.map((row) => row.pixels.map((pixel) => pixel.value));
+}
+function allSteps(model) {
+  const steps = [];
+  model.rows.forEach((row, rowIndex) =>
+    row.pixels.forEach((pixel, columnIndex) =>
+      steps.push({ rowIndex, columnIndex, pixel })));
+  return steps;
+}
+
+// The current step: the next pixel about to be sampled (null after finishing).
+function currentStep(state) {
+  if (state.done) return null;
+  return state.steps[state.order] ?? null;
+}
+
+// The current pixel's raw sample x, before rounding (for the marker + narration).
+function rawSampleX(currentRow, pixel) {
+  const centreX = (currentRow.leftEdge[0] + currentRow.rightEdge[0]) / 2;
+  const directionX = (currentRow.rightEdge[0] - currentRow.leftEdge[0]) / currentRow.rowWidth;
+  return centreX + pixel.offsetFromCentre * directionX;
+}
+
+// ---------------------------------------------------------------------------
+// Drawing helpers (pure SVG string assembly; no DOM access)
+// ---------------------------------------------------------------------------
+
+const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, ""));
+
+function sheetCoordinates(example, model) {
+  const width = 470, height = 330, margin = 62;
+  const scale = Math.min((width - 2 * margin) / model.baseLength,
+                         (height - 2 * margin) / model.legLength);
+  // The sheet's own coordinates: u across the base, v down the legs (v = 0 top edge).
+  const toXY = (u, v) => [width / 2 + u * scale, margin + v * scale];
+  return { width, height, toXY };
+}
+
+function drawSheet(example, model, state) {
+  const c = sheetCoordinates(example, model);
+  const { toXY } = c;
+  const base = model.baseLength, leg = model.legLength;
+  const topWidth = dist3(example.corners.top_left, example.corners.top_right);
+  const uTopLeft = base / 2 - topWidth / 2, uTopRight = base / 2 + topWidth / 2;
+  const current = currentStep(state);
+  const at = (u, v) => { const [x, y] = toXY(u, v); return [x.toFixed(1), y.toFixed(1)]; };
+  let s = "";
+
+  // Row guide lines: walked rows in teal, the current row bright, future rows faint.
+  model.rows.forEach((row, rowIndex) => {
+    const v = row.rowFraction * leg;
+    const uLeft = uTopLeft + row.rowFraction * (0 - uTopLeft);
+    const uRight = uTopRight + row.rowFraction * (base - uTopRight);
+    const [x1, y1] = at(uLeft, v), [x2, y2] = at(uRight, v);
+    const isCurrentRow = current && rowIndex === current.rowIndex;
+    const walked = current ? rowIndex < current.rowIndex : true;
+    const color = isCurrentRow ? "#5fc3d4"
+      : walked ? "rgba(95,195,212,.45)" : "rgba(232,237,243,.14)";
+    const width = isCurrentRow ? 2.2 : walked ? 1.2 : 1;
+    s += `<line x1="${x1}" x2="${x2}" y1="${y1}" y2="${y2}"
+                stroke="${color}" stroke-width="${width}"/>`;
+  });
+
+  // Outline: top edge, two legs, base.
+  const outline = [[uTopLeft, 0], [uTopRight, 0], [base, leg], [0, leg]];
+  s += `<polygon points="${outline.map(([u, v]) => at(u, v).join(",")).join(" ")}"
+        fill="rgba(232,237,243,.05)" stroke="rgba(232,237,243,.5)" stroke-width="1.4"/>`;
+
+  // Sample markers along the current row: sampled pixels + the one being sampled.
+  if (current) {
+    const row = model.rows[current.rowIndex];
+    const v = row.rowFraction * leg;
+    const uCentre = (uTopLeft + row.rowFraction * (0 - uTopLeft)
+                     + uTopRight + row.rowFraction * (base - uTopRight)) / 2;
+    row.pixels.forEach((pixel, columnIndex) => {
+      if (columnIndex > current.columnIndex) return;
+      const [x, y] = toXY(uCentre + pixel.offsetFromCentre, v);
+      const isCurrent = columnIndex === current.columnIndex;
+      if (!isCurrent && !pixel.inside) return;   // misses leave no sampled ghost
+      const fill = isCurrent ? "#5fc3d4"
+        : pixel.inside ? "rgba(95,195,212,.85)" : "rgba(232,237,243,.5)";
+      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${isCurrent ? 5.5 : 3.5}"
+                    fill="${fill}" ${isCurrent ? 'stroke="#e8edf3" stroke-width="1.6"' : ""}/>`;
+    });
+  }
+
+  // Corner labels (plain name + CSV letter).
+  const corners2d = {
+    top_left: [uTopLeft, 0], top_right: [uTopRight, 0],
+    bottom_left: [0, leg], bottom_right: [base, leg],
+  };
+  Object.entries(corners2d).forEach(([name, [u, v]]) => {
+    const [x, y] = toXY(u, v);
+    const above = v === 0;                       // top corners label above, bottom below
+    const nameY = above ? y - 28 : y + 26;
+    const csvY = nameY + 14;
+    s += `<text x="${x.toFixed(1)}" y="${nameY.toFixed(1)}" text-anchor="middle"
+                 fill="${CORNER_COLORS[name]}" font-size="13" font-weight="600">${name}</text>
+              <text x="${x.toFixed(1)}" y="${csvY.toFixed(1)}" text-anchor="middle"
+                 fill="rgba(147,161,176,.95)" font-size="11.5">(${CSV_LETTER[name]})</text>`;
+  });
+
+  // Axis annotations.
+  s += `<text x="14" y="${c.height - 12}" fill="rgba(147,161,176,.95)" font-size="11.5">
+          rows slide top → bottom · row_fraction = (row_index + 1) / frame_height</text>`;
+  s += `<text x="${c.width - 14}" y="20" text-anchor="end" fill="rgba(147,161,176,.95)" font-size="11.5">
+          leg_length = ${fmt(leg)} → frame_height = ${model.frameHeight}</text>`;
+  s += `<text x="${c.width - 14}" y="36" text-anchor="end" fill="rgba(147,161,176,.95)" font-size="11.5">
+          base_length = ${fmt(base)} → frame_width = ${model.frameWidth}</text>`;
+  return `<svg viewBox="0 0 ${c.width} ${c.height}" width="${c.width}" height="${c.height}">${s}</svg>`;
+}
+
+function drawFrame(model, state) {
+  const cell = 62, gap = 5;
+  const width = model.frameWidth * cell + gap * (model.frameWidth - 1) + 16;
+  const height = model.frameHeight * cell + gap * (model.frameHeight - 1) + 16;
+  let s = "";
+  for (let rowIndex = 0; rowIndex < model.frameHeight; rowIndex++) {
+    for (let columnIndex = 0; columnIndex < model.frameWidth; columnIndex++) {
+      const orderIndex = rowIndex * model.frameWidth + columnIndex;
+      const filled = state.done || orderIndex < state.order;
+      const isCurrent = !state.done && orderIndex === state.order;
+      const x = 8 + columnIndex * (cell + gap);
+      const y = 8 + rowIndex * (cell + gap);
+      // The computed value (not the fixture): the page truly renders whatever the
+      // algorithm computes, then self-checks it against the fixture on completion.
+      const value = model.rows[rowIndex].pixels[columnIndex].value;
+      const fill = filled ? `rgb(${value},${value},${value})` : "rgba(232,237,243,.045)";
+      const labelColor = value > 96 ? "rgba(20,24,30,.85)" : "rgba(240,244,248,.85)";
+      s += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="7"
+                   fill="${fill}" stroke="${isCurrent ? "#5fc3d4" : "rgba(232,237,243,.16)"}"
+                   stroke-width="${isCurrent ? 3 : 1}"/>
+                <text x="${x + cell / 2}" y="${y + cell / 2 + 6}" text-anchor="middle"
+                      font-family="ui-monospace, Menlo, monospace" font-size="19"
+                      fill="${filled ? labelColor : "rgba(147,161,176,.3)"}">${filled ? value : ""}</text>`;
+      if (isCurrent) {
+        s += `<text x="${x + cell / 2}" y="${y + cell - 7}" text-anchor="middle"
+                    fill="#5fc3d4" font-size="10.5">sampling…</text>`;
+      }
+    }
+  }
+  return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${s}</svg>`;
+}
+
+function drawVolume(example, model, state) {
+  const countX = example.volumeShape[0];
+  const boxW = 64, boxH = 64, padL = 26, padT = 46, gap = 6;
+  const width = padL + countX * (boxW + gap) + 16;
+  const height = padT + boxH + 58;
+  const current = currentStep(state);
+  const xAt = (sampleX) => padL + sampleX * (boxW + gap) + boxW / 2;
+  let s = "";
+
+  // The x-cubes with their stored values (the ramp stores each cube's x).
+  for (let x = 0; x < countX; x++) {
+    const boxX = padL + x * (boxW + gap);
+    const isTarget = current && current.pixel.inside && current.pixel.voxelIndex[0] === x;
+    s += `<rect x="${boxX}" y="${padT}" width="${boxW}" height="${boxH}" rx="6"
+                fill="${isTarget ? "rgba(95,195,212,.16)" : "rgba(232,237,243,.05)"}"
+                stroke="${isTarget ? "#5fc3d4" : "rgba(232,237,243,.18)"}"
+                stroke-width="${isTarget ? 2.6 : 1}"/>
+              <text x="${boxX + boxW / 2}" y="${padT + boxH / 2 + 6}" text-anchor="middle"
+                    font-family="ui-monospace, Menlo, monospace" font-size="20"
+                    fill="rgba(232,237,243,.85)">${x}</text>
+              <text x="${boxX + boxW / 2}" y="${padT + boxH + 16}" text-anchor="middle"
+                    fill="rgba(147,161,176,.8)" font-size="11">value = ${x}</text>`;
+  }
+
+  // Ruler with the current row's sample ticks; the current pixel's raw sample x is the
+  // big marker. Integer samples land on a cube's centre, a .5 tie lands on a boundary.
+  if (current) {
+    const row = model.rows[current.rowIndex];
+    s += `<line x1="${padL}" y1="${padT - 20}" x2="${padL + countX * (boxW + gap) - gap}"
+                y2="${padT - 20}" stroke="rgba(232,237,243,.25)"/>`;
+    row.pixels.forEach((pixel, columnIndex) => {
+      if (columnIndex > current.columnIndex) return;
+      const markerX = xAt(rawSampleX(row, pixel));
+      const isCurrent = columnIndex === current.columnIndex;
+      const color = pixel.inside || isCurrent ? "#5fc3d4" : "rgba(232,237,243,.5)";
+      s += `<line x1="${markerX.toFixed(1)}" y1="${padT - (isCurrent ? 30 : 24)}"
+                 x2="${markerX.toFixed(1)}" y2="${padT - (isCurrent ? 10 : 16)}"
+                 stroke="${color}" stroke-width="${isCurrent ? 2.5 : 1.4}"/>`;
+    });
+    const rawX = rawSampleX(row, current.pixel);
+    const rounded = rint(rawX);
+    const onTie = Math.abs(rawX - Math.floor(rawX) - 0.5) < 1e-9;   // halfway -> even side
+    s += `<circle cx="${xAt(rawX).toFixed(1)}" cy="${padT - 30}" r="4.5" fill="#5fc3d4"/>
+              <text x="${xAt(rawX).toFixed(1)}" y="${padT - 40}" text-anchor="middle"
+                    fill="#5fc3d4" font-size="11.5">sample x = ${fmt(rawX)} → rint = ${rounded}${onTie ? " (tie → even)" : ""}</text>`;
+  }
+  s += `<text x="${padL}" y="${height - 12}" fill="rgba(147,161,176,.95)" font-size="11.5">
+          each cube stores one number — the ramp stores each cube's x, so the highlighted
+          cube's value IS the pixel's gray level (uint8 maps 0..255 → 0..255)</text>`;
+  return `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${s}</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// Interactive state + DOM wiring
+// ---------------------------------------------------------------------------
+
+function initState(model) {
+  return { steps: allSteps(model), order: 0, done: false };
+}
+
+let state = null, model = null, activeExample = "trapezoid", timer = null;
+
+function narration() {
+  const el = document.getElementById("narration");
+  const current = currentStep(state);
+  if (!current) {
+    const ok = JSON.stringify(renderFrame(model)) === JSON.stringify(EXAMPLES[activeExample].expected);
+    el.textContent = `All ${state.steps.length} pixels placed — ` +
+      (ok ? "✓ matches the hand-checked fixture in algorithm.md."
+          : "✗ MISMATCH vs algorithm.md: a bug in this page!");
+    document.getElementById("hint").innerHTML = ok
+      ? '<span class="badge-ok">✓ self-check passed: rendered frame == expected fixture</span>'
+      : '<span class="badge-fail">✗ self-check FAILED — do not trust this page</span>';
+    return;
+  }
+  const pixel = current.pixel;
+  const parts = [
+    `row ${current.rowIndex + 1}/${model.frameHeight} · column ${current.columnIndex + 1}/${model.frameWidth}`,
+    `offset_from_centre = ${fmt(pixel.offsetFromCentre)}`,
+  ];
+  if (!pixel.inside) {
+    parts.push("outside the plane's row span → black (0)");
+  } else {
+    const row = model.rows[current.rowIndex];
+    parts.push(`sample x = ${fmt(rawSampleX(row, pixel))}`,
+               `nearest cube x = ${pixel.voxelIndex[0]} (rint, half-to-even)`,
+               `pixel value = ${pixel.value}`);
+  }
+  el.textContent = parts.join("  ·  ");
+}
+
+function redraw() {
+  document.getElementById("sheet-box").innerHTML =
+    drawSheet(EXAMPLES[activeExample], model, state);
+  document.getElementById("frame-box").innerHTML = drawFrame(model, state);
+  document.getElementById("volume-box").innerHTML =
+    drawVolume(EXAMPLES[activeExample], model, state);
+  narration();
+  const progress = document.getElementById("progress");
+  progress.textContent = state.done
+    ? `done · ${state.steps.length} pixels`
+    : `pixel ${Math.min(state.order + 1, state.steps.length)} / ${state.steps.length}`;
+  document.getElementById("step-pixel").disabled = state.done;
+  document.getElementById("step-row").disabled = state.done;
+  document.getElementById("play").textContent = timer ? "❚❚ pause" : "▸ play";
+}
+
+function stop() {
+  clearInterval(timer);
+  timer = null;
+}
+
+function advance() {
+  if (state.done) { stop(); redraw(); return; }
+  state.order += 1;
+  if (state.order >= state.steps.length) {
+    state.done = true;
+    stop();
+  }
+  redraw();
+}
+
+function playpause() {
+  if (timer) { stop(); redraw(); return; }
+  if (state.done) reset();
+  if (!state.done) timer = setInterval(advance, 500);
+  redraw();
+}
+
+function reset() {
+  stop();
+  model = buildModel(EXAMPLES[activeExample]);
+  state = initState(model);
+  document.getElementById("hint").innerHTML =
+    "“next pixel” steps one sample; each sample asks: outside the sheet's row span? nearest " +
+    "cube outside the volume? otherwise copy that cube's value (here: its x-index).";
+  redraw();
+}
+
+function stepRow() {
+  if (state.done) return;
+  const rowIndex = currentStep(state).rowIndex;
+  advance();                                   // the first pixel of the row
+  while (!state.done && currentStep(state).rowIndex === rowIndex) advance();
+}
+
+function switchExample(name) {
+  activeExample = name;
+  reset();
+}
+
+function init() {
+  const select = document.getElementById("example");
+  select.innerHTML = Object.entries(EXAMPLES)
+    .map(([id, ex]) => `<option value="${id}">${ex.label}</option>`).join("");
+  select.value = activeExample;
+  select.addEventListener("change", () => switchExample(select.value));
+  document.getElementById("reset").addEventListener("click", reset);
+  document.getElementById("play").addEventListener("click", playpause);
+  document.getElementById("step-pixel").addEventListener("click", advance);
+  document.getElementById("step-row").addEventListener("click", stepRow);
+  document.addEventListener("keydown", (event) => {
+    if (event.target instanceof HTMLSelectElement) return;
+    if (event.key === " ") { event.preventDefault(); playpause(); }
+    if (event.key === ".") advance();
+  });
+  document.getElementById("equations").innerHTML = equationsHtml();
+  reset();
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+}
+
+// The equations block (same text as algorithm.md, names the code uses).
+function equationsHtml() {
+  const line = (name, expr, comment) =>
+    `<span class="eq-name">${name}</span> ${expr}` +
+    (comment ? `   <span class="eq-comment"># ${comment}</span>` : "");
+  return [
+    line("leg_length", "= (dist(top_left, bottom_left) + dist(top_right, bottom_right)) / 2",
+         "the legs agree within EPS = 0.001 (FR-10)"),
+    line("base_length", "= dist(bottom_left, bottom_right)", ""),
+    line("frame_height", "= max(1, round(leg_length))", "one row per voxel-length unit (FR-12b)"),
+    line("frame_width", "= max(1, round(base_length))", ""),
+    "",
+    line("row_fraction", "= (row_index + 1) / frame_height", "one leg step taken before each row"),
+    line("left_edge[row]", "= top_left  + row_fraction * (bottom_left  - top_left)", "slides down the left leg"),
+    line("right_edge[row]", "= top_right + row_fraction * (bottom_right - top_right)", "slides down the right leg"),
+    line("row_centre", "= (left_edge + right_edge) / 2", ""),
+    line("row_width", "= dist(left_edge, right_edge)", ""),
+    line("row_direction", "= (right_edge - left_edge) / row_width", "one unit across the row"),
+    "",
+    line("offset_from_centre", "= column_index + 0.5 - frame_width / 2", "pixel centres, symmetric about the centre"),
+    line("sample_point", "= row_centre + offset_from_centre * row_direction", ""),
+    "",
+    line("voxel_index", "= rint(sample_point)", "nearest cube; ties go to the even side (FR-12a)"),
+    line("inside_row", "= |offset_from_centre| <= row_width / 2", "plus 1e-9 float-dust tolerance"),
+    line("inside_volume", "= 0 <= voxel_index < volume.shape", "else black, never clamped (FR-12d)"),
+    line("pixel", "= inside ? scale(volume[voxel_index]) : 0",
+         "scale: full value-type span → 0..255 (FR-12e)"),
+  ].join("\n");
+}
+</script>
+</body>
+</html>

@@ -365,10 +365,13 @@ def _display_scale(values: np.ndarray) -> np.ndarray:
 
 
 def _plane_corners(plane: Plane) -> tuple[Point, Point, Point, Point]:
-    """The plane's ``(a1, a2, b, c)`` corners, with a triangle folded in (FR-8).
+    """The plane's ``(top_left, top_right, bottom_left, bottom_right)`` corners.
 
-    A 3-point plane is the 4-point geometry with ``a1 == a2 == a``; its top
-    width is zero and rows widen linearly to the base.
+    CSV point order maps ``a1 → top_left``, ``a2 → top_right``,
+    ``b → bottom_left``, ``c → bottom_right`` (FR-8). A 3-point plane is the
+    same geometry with the top edge collapsed to the single apex
+    ``a``: ``top_left == top_right == a``, so the top edge has zero width and
+    rows widen linearly down to the base.
     """
     if plane.is_trapezoid:
         return (plane.points[0], plane.points[1], plane.points[2], plane.points[3])
@@ -379,45 +382,52 @@ def _plane_corners(plane: Plane) -> tuple[Point, Point, Point, Point]:
 def _render_plane(volume: np.ndarray, plane: Plane) -> Frame:
     """Render one validated plane as a display-scaled 2D uint8 frame (FR-12).
 
-    Analytic geometry, no accumulation (docs/algorithm.md): row ``y`` samples
-    leg parameter ``t_y = (y + 1) / H``; column ``x`` samples the row at pixel
-    centre offset ``x + 0.5 - W/2`` from the row's centre. Samples outside the
-    plane's row span are black; samples outside ``M`` are black (FR-12d).
-    Nearest voxel lookup is ``np.rint`` (half-to-even, FR-12a) and is resolved
-    with a boolean in-bounds mask *before* fancy indexing, so every index
-    handed to numpy is guaranteed in range.
+    Analytic geometry, no accumulation (docs/algorithm.md — same names there):
+    row ``row_index`` samples ``row_fraction = (row_index + 1) / frame_height``
+    (one leg step taken before each output row is written, FR-12b); column
+    ``column_index`` samples the row at pixel-centre distance
+    ``offset_from_centre = column_index + 0.5 - frame_width / 2`` from the row
+    centre. Samples outside the plane's row span are black; sample points
+    outside the volume are black (FR-12d). Nearest-cube lookup rounds each
+    sample point with ``np.rint`` (half-to-even, FR-12a) and is resolved with
+    a boolean in-bounds mask *before* fancy indexing, so every index handed
+    to numpy is guaranteed in range.
     """
-    a1, a2, b, c = _plane_corners(plane)
-    leg = (_dist(a1, b) + _dist(a2, c)) / 2.0
-    base = _dist(b, c)
-    height = max(1, int(np.rint(leg)))
-    width = max(1, int(np.rint(base)))
+    top_left, top_right, bottom_left, bottom_right = _plane_corners(plane)
+    leg_length = (_dist(top_left, bottom_left) + _dist(top_right, bottom_right)) / 2.0
+    base_length = _dist(bottom_left, bottom_right)
+    frame_height = max(1, int(np.rint(leg_length)))
+    frame_width = max(1, int(np.rint(base_length)))
 
-    a1v, a2v = np.asarray(a1), np.asarray(a2)
-    bv, cv = np.asarray(b), np.asarray(c)
-    t = (np.arange(height) + 1.0) / height
-    left = a1v + t[:, None] * (bv - a1v)
-    right = a2v + t[:, None] * (cv - a2v)
+    left_apex, right_apex = np.asarray(top_left), np.asarray(top_right)
+    left_base, right_base = np.asarray(bottom_left), np.asarray(bottom_right)
+    row_fraction = (np.arange(frame_height) + 1.0) / frame_height
+    left_edge = left_apex + row_fraction[:, None] * (left_base - left_apex)
+    right_edge = right_apex + row_fraction[:, None] * (right_base - right_apex)
 
-    centre = (left + right) / 2.0
-    direction = right - left
-    row_width = np.linalg.norm(direction, axis=1)
-    unit = np.zeros_like(direction)
-    np.divide(direction, row_width[:, None], out=unit, where=row_width[:, None] != 0)
+    row_centre = (left_edge + right_edge) / 2.0
+    row_span = right_edge - left_edge
+    row_width = np.linalg.norm(row_span, axis=1)
+    row_direction = np.zeros_like(row_span)
+    np.divide(row_span, row_width[:, None], out=row_direction,
+              where=row_width[:, None] != 0)
 
-    offsets = np.arange(width) + 0.5 - width / 2.0
-    samples = centre[:, None, :] + offsets[None, :, None] * unit[:, None, :]
-    in_row = np.abs(offsets)[None, :] <= row_width[:, None] / 2.0 + 1e-9
+    offset_from_centre = np.arange(frame_width) + 0.5 - frame_width / 2.0
+    sample_point = (
+        row_centre[:, None, :]
+        + offset_from_centre[None, :, None] * row_direction[:, None, :]
+    )
+    inside_row = np.abs(offset_from_centre)[None, :] <= row_width[:, None] / 2.0 + 1e-9
 
-    voxel = np.rint(samples).astype(np.intp)
-    shape = np.asarray(volume.shape)
-    in_volume = np.all((voxel >= 0) & (voxel < shape), axis=2)
-    valid = in_row & in_volume
+    voxel_index = np.rint(sample_point).astype(np.intp)
+    volume_shape = np.asarray(volume.shape)
+    inside_volume = np.all((voxel_index >= 0) & (voxel_index < volume_shape), axis=2)
+    inside = inside_row & inside_volume
 
-    image = np.zeros((height, width), dtype=np.uint8)
-    if np.any(valid):
-        xi, yi, zi = (voxel[valid, axis] for axis in range(3))
-        image[valid] = _display_scale(volume[xi, yi, zi])
+    image = np.zeros((frame_height, frame_width), dtype=np.uint8)
+    if np.any(inside):
+        x_idx, y_idx, z_idx = (voxel_index[inside, axis] for axis in range(3))
+        image[inside] = _display_scale(volume[x_idx, y_idx, z_idx])
     return Frame(row=plane.row, image=image)
 
 
