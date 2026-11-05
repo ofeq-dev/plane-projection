@@ -39,6 +39,62 @@ Step by step, per plane:
 All frames are then padded onto one shared black canvas (the video's frame
 size, FR-18) and written out as an mp4, one frame per CSV row (FR-17).
 
+## Pseudocode
+
+The whole renderer, in the same plain names the code and this document use
+(`rint` = round half-to-even, `dist` = Euclidean distance; every invalid row
+raises `PlaneError` before it reaches this code):
+
+```text
+for each plane record in the CSV, in order:
+    if the record is invalid:            # error frames render as black placeholders
+        emit the placeholder frame and continue
+
+    # frame size (FR-12b); a 3-point plane has top_left = top_right = a  (FR-8)
+    leg_length   = (dist(top_left, bottom_left) + dist(top_right, bottom_right)) / 2
+    base_length  = dist(bottom_left, bottom_right)
+    frame_height = max(1, rint(leg_length))
+    frame_width  = max(1, rint(base_length))
+
+    for row_index in 0 .. frame_height - 1:
+        row_fraction  = (row_index + 1) / frame_height   # one leg step before each row
+        left_edge     = top_left  + row_fraction * (bottom_left  - top_left)
+        right_edge    = top_right + row_fraction * (bottom_right - top_right)
+        row_centre    = (left_edge + right_edge) / 2
+        row_width     = dist(left_edge, right_edge)
+        row_direction = (right_edge - left_edge) / row_width   # a one-unit step across the row;
+                                                               # if row_width is 0 no pixel centre
+                                                               # can lie inside the row, so it is
+                                                               # written but never used
+
+        for column_index in 0 .. frame_width - 1:
+            offset_from_centre = column_index + 0.5 - frame_width / 2
+            sample_point       = row_centre + offset_from_centre * row_direction
+
+            if |offset_from_centre| > row_width / 2 + 1e-9:   # outside the row's span
+                pixel = black and continue
+
+            voxel_index = rint(sample_point)                  # nearest cube, half-to-even (FR-12a)
+
+            if any(voxel_index < 0) or any(voxel_index >= volume.shape):  # outside the block
+                pixel = black and continue                    # never clamped to the edge (FR-12d)
+
+            # gray level 0..255 over the value type's FULL range, not the picture's own
+            # content (FR-12e): unsigned types map 0..type_max, signed types
+            # type_min..type_max (e.g. int16: -32768..32767).
+            pixel = rint(255 * (volume[voxel_index] - type_min) / (type_max - type_min))
+
+canvas_width, canvas_height = even(max frame width), even(max frame height)  # FR-18/FR-19
+video = mp4 of every frame padded top-left onto that shared black canvas     # FR-17/FR-21
+```
+
+Two notes on faithfulness: the code computes every `sample_point` directly
+from `(row_index, column_index)` — no `point += step` accumulation, so
+floating-point drift cannot build up across a frame — and it applies the
+in-bounds mask **before** indexing into `volume`, so numpy never sees an
+out-of-range index. The sections below pin each line of this pseudocode down
+clause by clause.
+
 ## Names used here
 
 The CSV column letters (`a, b, c` / `a1, a2, b, c`) come from the brief's
