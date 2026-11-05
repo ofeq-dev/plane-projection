@@ -157,13 +157,21 @@ def test_triangle_with_coincident_b_and_c_is_degenerate(tmp_path):
     assert "degenerate" in record.reason or "zero-width" in record.reason
 
 
-def test_trapezoid_zero_top_base_with_parallel_legs_is_degenerate(tmp_path):
-    # legs 4/4 (isosceles holds), a1 == a2, and the legs are parallel ->
-    # d12 = 0 on every row -> zero-width frame (forces b == c here).
+def test_trapezoid_zero_top_base_with_same_direction_legs_is_degenerate(tmp_path):
+    # legs 4/4 (isosceles holds), a1 == a2, and the legs step the same way
+    # (a2->c == a1->b) -> every row's width is 0 -> zero-width frame.
     records = Ex0.parse_planes(write_csv(tmp_path, "4,0,0,0,0,0,0,0,4,0,0,4,0\n"))
     record = records[0]
     assert isinstance(record, Ex0.PlaneError)
     assert "degenerate" in record.reason or "zero-width" in record.reason
+
+
+def test_trapezoid_zero_top_base_with_opposite_legs_renders_as_a_triangle(tmp_path):
+    # a1 == a2 but leg a2->c = -leg a1->b: opposite-way legs are the 3-point
+    # triangle geometry (apex a1, base through b and c) - valid and rendered,
+    # so FR-11 only rejects the same-direction collapse.
+    records = Ex0.parse_planes(write_csv(tmp_path, "4,0,0,0,0,0,0,0,4,0,0,-4,0\n"))
+    assert isinstance(records[0], Ex0.Plane)
 
 
 def test_trapezoid_zero_top_base_with_non_parallel_legs_is_a_triangle(tmp_path):

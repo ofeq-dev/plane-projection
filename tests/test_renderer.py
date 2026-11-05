@@ -68,6 +68,17 @@ def test_frame_dimensions_follow_the_density_rule():
     assert frame.image.shape == (3, 2)
 
 
+def test_zero_top_base_opposite_legs_render_as_a_triangle():
+    # a1 == a2 (collapsed top edge) with opposite-way legs: exactly the
+    # 3-point triangle geometry, apex a1, base b->c — leg 4 -> 4 rows,
+    # base 8 -> 8 columns (FR-11 rejects only the same-direction collapse).
+    frame = frame_of(
+        np.zeros((3, 8, 5), dtype=np.uint8),
+        [(0, 0, 0), (0, 0, 0), (0, 4, 0), (0, -4, 0)],
+    )
+    assert frame.image.shape == (4, 8)
+
+
 @pytest.mark.parametrize(
     ("dtype", "value", "expected"),
     [

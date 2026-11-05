@@ -235,8 +235,9 @@ def _validate_trapezoid(a1: Point, a2: Point, b: Point, c: Point) -> str | None:
     dist(a2,c)| < EPS``; base ``dist(a1,a2) <= dist(b,c)`` (with the EPS
     tolerance - the corpus's rectangles exceed it by ~4e-7 float dust);
     coplanarity of the two legs. Constructibility (FR-11): no zero-length
-    leg; ``a1 == a2`` with parallel legs gives a zero-width frame, while
-    ``a1 == a2`` with diverging legs is a triangle and renders fine.
+    leg; ``a1 == a2`` with same-direction legs maximizes the zero-width
+    collapse, while ``a1 == a2`` with diverging legs (including opposite-way
+    legs) is a triangle and renders fine.
     Parallel legs with a nonzero top base are legal rectangles (the whole
     head.csv corpus).
     """
@@ -261,9 +262,12 @@ def _validate_trapezoid(a1: Point, a2: Point, b: Point, c: Point) -> str | None:
     if triple > COPLANAR_RTOL * d1 * d2 * (d12 or 1.0):
         return "legs a1→b and a2→c do not lie in the same plane (rule 3)"
     if d12 == 0:
-        # a1 == a2: only parallel legs make d12 stay 0 on every row.
-        if _cross(leg1, leg2) == (0.0, 0.0, 0.0):
-            return "degenerate: a1 == a2 with parallel legs (zero-width frame)"
+        # a1 == a2: the frame is zero-width on every row exactly when the
+        # legs step the same way (a2->c == a1->b). Opposite-way legs
+        # (a2->c == -(a1->b)) are the 3-point triangle geometry — apex a1,
+        # base through b and c — and render.
+        if leg1 == leg2:
+            return "degenerate: a1 == a2 with same-direction legs (zero-width frame)"
     return None
 
 
