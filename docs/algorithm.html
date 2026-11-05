@@ -564,7 +564,7 @@
             <span class="panel-cap" id="plane-cap"></span>
           </figcaption>
           <div class="panel-body" id="plane-box"></div>
-          <p class="panel-foot">The plane is drawn flat, as if unfolded. Rows run left → right; the legs run top → bottom.</p>
+          <p class="panel-foot">The plane is drawn flat, as if unfolded. Rows run left → right; the legs run top → bottom. On the row being sampled: the dashed verticals are the walls between cubes along the axis the row travels, each placed dot carries the cube its sample lands on, and the pixel being placed shows its original (pre-rounding) value with the cube that value rounds to.</p>
         </figure>
         <figure class="panel">
           <figcaption class="panel-head">
@@ -827,7 +827,8 @@ function buildModel(example) {
       pixels.push({ offsetFromCentre, samplePoint, voxelIndex,
                     insideRow, insideVolume, inside, rawValue, gray });
     }
-    rows.push({ rowIndex, rowFraction, leftEdge, rightEdge, rowWidth, pixels });
+    rows.push({ rowIndex, rowFraction, leftEdge, rightEdge, rowCentre,
+                rowDirection, rowWidth, pixels });
   }
   return { legLength, baseLength, frameHeight, frameWidth, rows };
 }
@@ -875,6 +876,7 @@ function drawPlane(example, model, state) {
 
   const g = planeGeometry(example, model);
   const { toXY, cx, padT } = g;
+  const scale = g.scale;
   const leg = model.legLength;
   const topHalf = g.topWidth / 2, baseHalf = model.baseLength / 2;
   const current = currentStep(state);
@@ -908,6 +910,31 @@ function drawPlane(example, model, state) {
     const row = model.rows[current.rowIndex];
     const v = row.rowFraction * leg;
     // This unfolded view is symmetric about the canvas centre, so the row centre is 0.
+    // Cube walls of the axis the row travels along, in a band around the row, so the
+    // "which cube is closest?" step is visible right here in the plane view.
+    const absDir = row.rowDirection.map((d) => Math.abs(d));
+    const travelAxis = absDir.indexOf(Math.max(...absDir));
+    const travelDir = row.rowDirection[travelAxis];
+    const travelCentre = row.rowCentre[travelAxis];
+    const axisChar = "xyz"[travelAxis];
+    if (Math.abs(travelDir) > 1e-9) {
+      const rowY = toXY(0, v)[1];
+      const bandHalf = Math.min(Math.max(scale * 0.55, 10), 22);
+      const uHalf = row.rowWidth / 2;
+      const lo = Math.min(travelCentre - uHalf * travelDir, travelCentre + uHalf * travelDir);
+      const hi = Math.max(travelCentre - uHalf * travelDir, travelCentre + uHalf * travelDir);
+      for (let k = Math.ceil(lo - 0.5); k <= Math.floor(hi + 0.5); k++) {
+        if (k < -1 || k >= example.shape[travelAxis]) continue;
+        const wallU = (k + 0.5 - travelCentre) / travelDir;
+        const [wx] = toXY(wallU, v);
+        s += `<line x1="${wx.toFixed(1)}" x2="${wx.toFixed(1)}" y1="${(rowY - bandHalf).toFixed(1)}"
+                      y2="${(rowY + bandHalf).toFixed(1)}" stroke="rgba(230, 237, 231, .3)"
+                      stroke-width="1" stroke-dasharray="2 3"/>`;
+        s += `<text x="${wx.toFixed(1)}" y="${(rowY - bandHalf + 10).toFixed(1)}" text-anchor="middle"
+                      fill="rgba(149, 166, 156, .6)" font-family="${mono}"
+                      font-size="9">${k}|${k + 1}</text>`;
+      }
+    }
     row.pixels.forEach((pixel, columnIndex) => {
       const u = pixel.offsetFromCentre;
       const [x, y] = at(u, v);
@@ -929,8 +956,33 @@ function drawPlane(example, model, state) {
         }
         s += `<circle cx="${x}" cy="${y}" r="5.6" fill="${pixel.inside ? "#63d0cf" : "#ff8a7a"}"
                       stroke="#0e1713" stroke-width="1.6"/>`;
+        // Full label on the pixel being placed: its original (pre-rounding)
+        // value on the row's travel axis, and the cube that value lands on.
+        if (pixel.insideRow) {
+          const pre = pixel.samplePoint[travelAxis];
+          const post = pixel.voxelIndex[travelAxis];
+          let label = `${axisChar} ${fmt(pre)} → ${post}`;
+          if (isTie(pre)) label += ` · tie → even`;
+          s += `<text x="${x}" y="${(Number(y) + 17).toFixed(1)}" text-anchor="middle"
+                        fill="${pixel.inside ? "#63d0cf" : "#ff8a7a"}" font-family="${mono}"
+                        font-size="10.5">${label}</text>`;
+          const otherTie = [0, 1, 2].find(
+            (axis) => axis !== travelAxis && isTie(pixel.samplePoint[axis]));
+          if (otherTie !== undefined && pixel.inside) {
+            const char2 = "xyz"[otherTie];
+            s += `<text x="${x}" y="${(Number(y) + 29).toFixed(1)}" text-anchor="middle"
+                          fill="rgba(99, 208, 207, .95)" font-family="${mono}"
+                          font-size="10.5">${char2} ${fmt(pixel.samplePoint[otherTie])} →
+                          ${pixel.voxelIndex[otherTie]} · tie → even</text>`;
+          }
+        }
       } else if (pixel.inside) {
         s += `<circle cx="${x}" cy="${y}" r="3.2" fill="rgba(99, 208, 207, .72)"/>`;
+        // Already-placed dots: the cube their sample landed on (travel axis).
+        const post = pixel.voxelIndex[travelAxis];
+        s += `<text x="${x}" y="${(Number(y) + 14).toFixed(1)}" text-anchor="middle"
+                      fill="rgba(99, 208, 207, .85)" font-family="${mono}"
+                      font-size="9">→ ${post}</text>`;
       } else {
         const [xi, yi] = [Number(x), Number(y)];
         s += `<path d="M${(xi - 3).toFixed(1)} ${(yi - 3).toFixed(1)}
