@@ -78,11 +78,18 @@ this SRS pins what the tool must accept, produce, and how fast.
   coordinates, must parse identically.
 - **FR-10** A plane is **valid** iff it satisfies the brief's rules with `EPS = 0.001`:
   3-point: `|dist(a,b) − dist(a,c)| < EPS`; 4-point: `|dist(a1,b) − dist(a2,c)| < EPS`,
-  `dist(a1,a2) ≤ dist(b,c)`, and both legs `a1→b`, `a2→c` lie in one plane.
+  `dist(a1,a2) ≤ dist(b,c)` — checked with the same EPS slack, since the corpus's
+  rectangular rows exceed exact equality by ~4e-7 float dust (so the rejection
+  predicate is `dist(a1,a2) > dist(b,c) + EPS`) — and both legs `a1→b`, `a2→c`
+  lie in one plane.
 - **FR-11** A plane is **constructible** iff, additionally, no leg has length 0
-  (division-by-zero guard) and the leg/basis geometry yields a non-degenerate frame
-  (the two leg directions are not parallel). Constructibility is an extension of
-  validity, not an alternative: both raise for the same downstream treatment.
+  (division-by-zero guard) and its geometry cannot collapse to a zero-width frame:
+  a triangle with `b == c`, or a 4-point row with `a1 == a2` whose legs step the
+  same way (`a1→b == a2→c`). `a1 == a2` with opposite-way legs is the 3-point
+  triangle geometry (apex `a1`, base `b→c`) and renders; parallel legs under a
+  nonzero top edge are legal rectangles (the whole `head.csv` corpus).
+  Constructibility is an extension of validity, not an alternative: both raise
+  for the same downstream treatment.
 
 ### 3.4 Frame rendering
 
@@ -91,11 +98,14 @@ this SRS pins what the tool must accept, produce, and how fast.
   - **FR-12a** Sampling: nearest voxel by the file's documented tie rule —
     half-to-even, per [`numpy.rint`](https://numpy.org/doc/stable/reference/generated/numpy.rint.html).
   - **FR-12b** Density: one frame sample per voxel-length unit along each plane edge —
-    frame height `= round(leg length)`, width `= round(base length)` in index units.
+    frame height `= round(leg length)`, width `= round(base length)` in index units,
+    clamped to at least 1 so a sub-voxel plane still renders (docs/algorithm.md).
   - **FR-12c** Orientation: apex `a` at top-center; the two equal legs run downward to
     `b` (left) and `c` (right); each row's samples spread symmetrically about the center
-    column; 4-point planes render as trapezoids with row width `dist(a1,a2) ≤ base`.
-    No mirroring or flipping. Anchored to the lecturer's reference pseudocode for
+    column; 4-point planes render rows whose width interpolates between the top edge
+    `dist(a1,a2)` and the base `dist(b,c)` — FR-10's rule keeps the top edge no wider
+    than the base, so no rendered row is wider than the base, which the last row spans
+    exactly. No mirroring or flipping. Anchored to the lecturer's reference pseudocode for
     cross-student comparability; verified against a classmate's output on common planes
     (see §5.3) before freezing.
   - **FR-12d** Out-of-volume samples (`p` not in `M`) render as 0 (black), per the brief.
@@ -158,9 +168,10 @@ this SRS pins what the tool must accept, produce, and how fast.
 ### 5.3 Acceptance criteria
 
 1. `python Ex0.py assets/nrrd/MRHead_1.nrrd assets/csv/lecturer_example.csv out.mp4`
-   runs without a traceback and produces 4 frames; row 2's set
-   (`dist(a1,b)=400` vs `dist(a2,c)=500`, diff `≥ EPS`) renders an error frame whose
-   banner names that rule; rows 1, 3, 4 render projections.
+   runs without a traceback and produces 4 frames; row 3 fails the 3-point
+   isosceles rule and row 4's set (`dist(a1,b)=300` vs `dist(a2,c)=400`, diff
+   `≥ EPS`) renders an error frame whose banner names that rule; rows 1-2
+   render projections.
 2. `head.csv` against `MRHead_1` produces a video of axial slices, black above/below
    (rows whose z-coordinate leaves the volume).
 3. Cross-student check: the same CSV, rendered by a classmate's implementation, matches
@@ -179,3 +190,9 @@ To-Do #5), not here.
 
 - v0.1 (2026-10-31): first draft from the design session; every FR traces to a decision
   made in that session's ledger (glossary + ADR 0002).
+- v0.2 (2026-11-05): alignment pass with `docs/algorithm.md` and the brief: FR-10
+  documents rule 2's EPS-slack predicate; FR-11 states the constructibility rules as
+  implemented (same-direction-leg collapse; rectangles stay legal); FR-12b pins the
+  ≥1 clamp; FR-12c's row-width wording matches the interpolation guarantee
+  (a valid 4-point quad's rows are capped at the base width, not guaranteed to widen
+  monotonically).

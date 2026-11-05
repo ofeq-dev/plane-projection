@@ -24,3 +24,7 @@ python Ex0.py file.nrrd file.csv file.mp4
 ```
 
 Tests: `python -m pytest`.
+
+Docs: [`docs/srs.md`](docs/srs.md) (requirements) ·
+[`docs/algorithm.md`](docs/algorithm.md) (frame geometry; interactive
+plain-words walkthrough in [`docs/algorithm.html`](docs/algorithm.html)).
