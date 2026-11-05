@@ -518,9 +518,9 @@
       <li><span class="n">01</span><strong>Size the frame</strong>
         <span class="d">One row per voxel-length step down the legs, one column per step across the base.</span></li>
       <li><span class="n">02</span><strong>Slide the rows down</strong>
-        <span class="d">Each row's ends sit on the two legs, so each row is wider than the one above, until the last row spans the base.</span></li>
+        <span class="d">Each row's ends sit on the two legs. No row is wider than the base, and the last row spans it exactly — triangles widen the whole way down; a rectangle keeps every row full width.</span></li>
       <li><span class="n">03</span><strong>Place the pixel centres</strong>
-        <span class="d">Pixels sit half a step apart, symmetric about the row's centre. The row stays centred as it shrinks or grows.</span></li>
+        <span class="d">Pixels sit one step apart, symmetric about the row's centre. The row stays centred as its width changes.</span></li>
       <li><span class="n">04</span><strong>Find the nearest cube</strong>
         <span class="d">Round the sample point to whole x, y, z indices. An exact half goes to the even index.</span></li>
       <li><span class="n">05</span><strong>Copy the value</strong>
@@ -700,7 +700,7 @@ const EXAMPLES = {
   },
   trapezoid: {
     label: "Trapezoid · 4 × 6",
-    blurb: "A 4-point plane. Each row is wider than the one above as its ends slide down the two legs, until the last row spans the whole base.",
+    blurb: "A 4-point plane. Here each row is wider than the one above as its ends slide down the two legs, until the last row spans the whole base.",
     corners: { top_left: [2, 2, 0], top_right: [4, 2, 0],
                bottom_left: [0, 6, 0], bottom_right: [6, 6, 0] },
     shape: [8, 8, 5],
