@@ -40,11 +40,11 @@
 
 **TODO**:
 
-1. [ ] Write an SRS
-2. [ ] Write an algorithm
-3. [ ] Define a testing strategy
-4. [ ] Export an example run and include a write up
-5. [ ] Ensure the repo contains 1) docs, 2) source code, 3) README (with build / run instruction), 4) benchmarks, videos, etc.
+1. [x] Write an SRS
+2. [x] Write an algorithm
+3. [x] Define a testing strategy
+4. [x] Export an example run and include a write up
+5. [x] Ensure the repo contains 1) docs, 2) source code, 3) README (with build / run instruction), 4) benchmarks, videos, etc.
 
 ## Agent skills
 
