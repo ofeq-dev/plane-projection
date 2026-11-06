@@ -161,7 +161,7 @@ def report_context() -> ReportContext:
 
 
 def write_results(
-    results_path: str | Path,
+    results_path: Path,
     context: ReportContext,
     rows: Sequence[ResultRow],
 ) -> None:
