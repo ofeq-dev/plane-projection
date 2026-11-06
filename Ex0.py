@@ -495,7 +495,7 @@ def pad_frame(image: np.ndarray, canvas: tuple[int, int]) -> np.ndarray:
 
 
 def render_error_frame(error: PlaneError, canvas: tuple[int, int]) -> np.ndarray:
-    """Draw a black BGR frame with the row's error text in a red top banner."""
+    """Draw a black BGR frame with the row's error text in a red top banner (FR-14/FR-15)."""
     width, height = canvas
     image = np.zeros((height, width, 3), dtype=np.uint8)
     text = error.banner()

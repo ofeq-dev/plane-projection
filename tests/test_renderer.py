@@ -180,6 +180,44 @@ def test_error_frame_has_red_banner_white_text_and_black_remainder():
     assert canvas[-1, -1].tolist() == [0, 0, 0]
 
 
+def test_error_frame_wrapping_and_determinism():
+    # FR-15: the banner carries the row index followed by the specific rule;
+    # long reasons wrap to fill the fixed top corner, and the same record
+    # always produces the identical frame (banner determinism, FR-16).
+    error = Ex0.PlaneError(
+        row=9,
+        reason=(
+            "|dist(a1,b) − dist(a2,c)| = 100 ≥ EPS = 0.001"
+            " (dist(a1,b) = 300, dist(a2,c) = 400)"
+        ),
+    )
+    wrapped = Ex0.render_error_frame(error, (120, 90))
+    # Text lines occupy at least two distinct bands of the top banner: rows
+    # with white pixels separated by banner-only rows.
+    text_rows = {int(y) for y, _ in np.argwhere(
+        (wrapped[:45] == (255, 255, 255)).all(axis=2))}
+    bands = [y for i, y in enumerate(sorted(text_rows)) if i == 0 or y - sorted(text_rows)[i - 1] > 5]
+    assert len(bands) >= 2
+    assert (wrapped == Ex0.render_error_frame(error, (120, 90))).all()
+
+
+def test_error_frame_truncation_keeps_text_inside_canvas():
+    # FR-18: the banner is drawn inside the frame. Multi-word reasons wrap
+    # (white text, none below the banner band); the pathological single
+    # overlong word cannot wrap, so it is drawn at the minimum scale and
+    # blends into the banner rather than crashing or escaping the canvas.
+    error = Ex0.PlaneError(row=3, reason=" ".join(["ox"] * 60))
+    canvas = Ex0.render_error_frame(error, (64, 32))
+    assert canvas.shape == (32, 64, 3)
+    assert canvas[0, 0].tolist() == [0, 0, 255]
+    assert ((canvas[:20] == (255, 255, 255)).all(axis=2)).any()
+    assert ((canvas[20:] == (255, 255, 255)).all(axis=2)).any() == False  # noqa: E712
+
+    giant = Ex0.render_error_frame(Ex0.PlaneError(row=3, reason="x" * 200), (64, 32))
+    assert giant.shape == (32, 64, 3)
+    assert ((giant[..., 2] == 255) & (giant[..., 0] == 0)).any()  # red banner intact
+
+
 def test_pad_frame_places_content_top_left_and_black_fills():
     # FR-18: padding is top-left, background black - no centring, no aspect
     # compensation (FR-21).

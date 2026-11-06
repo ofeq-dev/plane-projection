@@ -17,6 +17,20 @@ import pytest
 
 import Ex0
 
+
+def read_frames(path: Path) -> list[np.ndarray]:
+    """Read every frame back out of a written mp4 (acceptance probes)."""
+    capture = cv2.VideoCapture(str(path))
+    assert capture.isOpened()
+    frames = []
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        frames.append(frame)
+    capture.release()
+    return frames
+
 ASSETS = Path(__file__).parent.parent / "assets"
 
 
@@ -114,19 +128,13 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
     assert code == 0, captured.err
     assert out.exists()
 
-    capture = cv2.VideoCapture(str(out))
-    assert capture.isOpened()
-    frames = []
-    while True:
-        ok, frame = capture.read()
-        if not ok:
-            break
-        frames.append(frame)
+    frames = read_frames(out)
     assert len(frames) == 4
-    assert capture.get(cv2.CAP_PROP_FPS) == 30
-    assert capture.get(cv2.CAP_PROP_FRAME_WIDTH) == 500
-    assert capture.get(cv2.CAP_PROP_FRAME_HEIGHT) == 448
-    capture.release()
+    probe = cv2.VideoCapture(str(out))
+    assert probe.get(cv2.CAP_PROP_FPS) == 30
+    assert probe.get(cv2.CAP_PROP_FRAME_WIDTH) == 500
+    assert probe.get(cv2.CAP_PROP_FRAME_HEIGHT) == 448
+    probe.release()
 
     # MRHead is int16 0..279: full-range display scaling puts its in-volume
     # samples around mid gray. The planes extend past the volume, so most of
@@ -172,14 +180,7 @@ def test_render_exception_between_valid_rows_still_writes_all_frames(
     assert code == 0
     assert captured.err == "row 2: render failed (RuntimeError): synthetic rendering failure\n"
     assert "wrote 3 frames (32x32" in captured.out
-    capture = cv2.VideoCapture(str(out))
-    frames = []
-    while True:
-        ok, frame = capture.read()
-        if not ok:
-            break
-        frames.append(frame)
-    capture.release()
+    frames = read_frames(out)
     assert len(frames) == 3
     assert frames[0].mean() > 100 and frames[2].mean() > 100
     assert (frames[1][:, :, 2] > frames[1][:, :, 0] + 80).any()
@@ -198,14 +199,7 @@ def test_all_invalid_rows_still_produce_error_video(tmp_path, capsys, tmp_nrrd):
 
     assert captured.err.count("row ") == 2
     assert "wrote 2 frames (256x256" in captured.out
-    capture = cv2.VideoCapture(str(out))
-    frames = []
-    while True:
-        ok, frame = capture.read()
-        if not ok:
-            break
-        frames.append(frame)
-    capture.release()
+    frames = read_frames(out)
     assert len(frames) == 2
     assert all((frame[:, :, 2] > frame[:, :, 0] + 80).any() for frame in frames)
     assert all(frame[-1, -1].max() < 16 for frame in frames)
