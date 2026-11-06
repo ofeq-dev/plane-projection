@@ -169,6 +169,17 @@ def test_canvas_falls_back_to_placeholder_when_no_row_renders():
     assert Ex0.canvas_size([]) == Ex0.PLACEHOLDER_CANVAS
 
 
+def test_error_frame_has_red_banner_white_text_and_black_remainder():
+    canvas = Ex0.render_error_frame(
+        Ex0.PlaneError(row=7, reason="|dist(a1,b) − dist(a2,c)| = 100 ≥ EPS=0.001"),
+        (256, 256),
+    )
+    assert canvas.shape == (256, 256, 3)
+    assert canvas[0, 0].tolist() == [0, 0, 255]
+    assert ((canvas[:80] == [255, 255, 255]).all(axis=2)).any()
+    assert canvas[-1, -1].tolist() == [0, 0, 0]
+
+
 def test_pad_frame_places_content_top_left_and_black_fills():
     # FR-18: padding is top-left, background black - no centring, no aspect
     # compensation (FR-21).
