@@ -211,7 +211,7 @@ def test_error_frame_truncation_keeps_text_inside_canvas():
     assert canvas.shape == (32, 64, 3)
     assert canvas[0, 0].tolist() == [0, 0, 255]
     assert ((canvas[:20] == (255, 255, 255)).all(axis=2)).any()
-    assert ((canvas[20:] == (255, 255, 255)).all(axis=2)).any() == False  # noqa: E712
+    assert not ((canvas[20:] == (255, 255, 255)).all(axis=2)).any()
 
     giant = Ex0.render_error_frame(Ex0.PlaneError(row=3, reason="x" * 200), (64, 32))
     assert giant.shape == (32, 64, 3)

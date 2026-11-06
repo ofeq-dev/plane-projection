@@ -509,7 +509,10 @@ def render_error_frame(error: PlaneError, canvas: tuple[int, int]) -> np.ndarray
         return cv2.getTextSize(value, font, scale, thickness)[0][0]
 
     max_width = max(1, width - 2 * horizontal_padding)
-    while scale > 0.1 and max(text_width(word) for word in text.split()) > max_width:
+    # Shrink until the widest single word fits its line: overlong words
+    # cannot wrap, so the scale keeps dropping (no clipping — every drawn
+    # glyph stays inside the canvas) until it does.
+    while scale > 0.02 and max(text_width(word) for word in text.split()) > max_width:
         scale *= 0.8
 
     lines: list[str] = []
