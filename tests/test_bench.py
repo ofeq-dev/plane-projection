@@ -46,8 +46,9 @@ def tiny_case(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
 
     csv_path = base / "tiny.csv"
     csv_path.write_text(
-        "0,0,0,4,4,4\n"        # triangle through the diagonal
-        "0,0,0,0,3,2,3\n"      # trapezoid
+        "Number of Points (3 or 4),x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4\n"
+        "3,0,0,0,3,4,0,-3,4,0\n"    # triangle, both legs length 5
+        "4,0,0,0,3,0,0,0,5,0,3,5,0\n"  # trapezoid, legs and top width 3, base 5
     )
     return volume_path, csv_path
 
@@ -118,8 +119,8 @@ def test_choose_min_picks_fatest_repeat_by_throughput_clock():
     which by a fixed frame count is the highest FPS."""
     slow = bench.Timing(frames=100, load_seconds=0.2, render_seconds=1.0, encode_seconds=0.0)
     fast = bench.Timing(frames=100, load_seconds=0.2, render_seconds=0.8, encode_seconds=0.0)
-    other = bench.Timing(frames=99, load_seconds=0.0, render_seconds=0.5, encode_seconds=0.0)
-    best = bench.choose_min([slow, fast, other])
+    slowest = bench.Timing(frames=100, load_seconds=0.2, render_seconds=1.2, encode_seconds=0.0)
+    best = bench.choose_min([slow, fast, slowest])
     assert best is fast
     with pytest.raises(IndexError):
         bench.choose_min([])
@@ -132,7 +133,7 @@ def test_write_results_includes_command_methodology_and_hardware(tmp_path):
         cpu="Fake CPU 1GHz (2 cores)",
         python="3.12.0",
         numpy="1.0.0",
-        ffmpeg_note="codec: cv2.VideoWriter mp4v",
+        codec_note="codec: cv2.VideoWriter mp4v",
     )
     results_path = tmp_path / "results-test.md"
     row = bench.ResultRow(
