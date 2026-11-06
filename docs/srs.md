@@ -183,8 +183,10 @@ this SRS pins what the tool must accept, produce, and how fast.
 Frame-vs-golden-master comparisons using fixtures per
 [pytest fixtures](https://docs.pytest.org/en/stable/how-to/fixtures.html) and the
 [xUnit verification vocabulary](http://xunitpatterns.com/Result%20Verification%20Patterns.html).
-Detailed test-plan decisions are tracked behind the testing-strategy document (brief
-To-Do #5), not here.
+Detailed test-plan decisions live in
+[`docs/testing-strategy.md`](testing-strategy.md) (seams, oracles, fixtures,
+golden protocol, traceability), not here. A worked run of §5.3.1/§5.3.2 is in
+[`docs/example-run.md`](example-run.md).
 
 ## 6. History
 
