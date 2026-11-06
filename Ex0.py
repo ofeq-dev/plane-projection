@@ -418,21 +418,48 @@ def _render_plane(volume: np.ndarray, plane: Plane) -> Frame:
               where=row_width[:, None] != 0)
 
     offset_from_centre = np.arange(frame_width) + 0.5 - frame_width / 2.0
-    sample_point = (
-        row_centre[:, None, :]
-        + offset_from_centre[None, :, None] * row_direction[:, None, :]
-    )
     inside_row = np.abs(offset_from_centre)[None, :] <= row_width[:, None] / 2.0 + 1e-9
 
-    voxel_index = np.rint(sample_point).astype(np.intp)
-    volume_shape = np.asarray(volume.shape)
-    inside_volume = np.all((voxel_index >= 0) & (voxel_index < volume_shape), axis=2)
+    # The sample point's axes are built by the same elementwise float ops as
+    # the whole-array expression above — row-centre + offset ⋅ row-direction —
+    # only axis-at-a-time, so the FP arithmetic (and thus every np.rint
+    # rounding decision, FR-12a) is bit-identical while the temporaries drop
+    # from (H, W, 3) float64 blocks to one (H, W) per axis.
+    row_dx, row_dy, row_dz = (
+        row_direction[:, None, axis] for axis in range(3)
+    )
+    sample_x = row_centre[:, None, 0] + offset_from_centre[None, :] * row_dx
+    sample_y = row_centre[:, None, 1] + offset_from_centre[None, :] * row_dy
+    sample_z = row_centre[:, None, 2] + offset_from_centre[None, :] * row_dz
+
+    voxel_x = np.rint(sample_x).astype(np.intp)
+    voxel_y = np.rint(sample_y).astype(np.intp)
+    voxel_z = np.rint(sample_z).astype(np.intp)
+    volume_sx, volume_sy, volume_sz = volume.shape
+    # Unsigned-reinterpret bound test (one comparison per element): in the
+    # C two's-complement representation, ``0 <= v < hi`` holds exactly when
+    # the value reinterpreted as unsigned is ``< hi`` — negatives wrap to the
+    # maximum unsigned order, so they fail the same comparison. Integer
+    # arithmetic is exact, so the mask is identical to the signed compare.
+    inside_volume = (
+        (voxel_x.view(np.uintp) < volume_sx)
+        & (voxel_y.view(np.uintp) < volume_sy)
+        & (voxel_z.view(np.uintp) < volume_sz)
+    )
     inside = inside_row & inside_volume
 
     image = np.zeros((frame_height, frame_width), dtype=np.uint8)
     if np.any(inside):
-        x_idx, y_idx, z_idx = (voxel_index[inside, axis] for axis in range(3))
-        image[inside] = _display_scale(volume[x_idx, y_idx, z_idx])
+        x_idx, y_idx, z_idx = voxel_x[inside], voxel_y[inside], voxel_z[inside]
+        gathered = volume[x_idx, y_idx, z_idx]
+        info = np.iinfo(volume.dtype)
+        if info.min == 0 and info.max == 255:
+            # Full-range unsigned display scaling is the identity (FR-12e):
+            # rint(v * 255/255) == v for every 0..255 value, bit-exactly —
+            # skip the float round trip.
+            image[inside] = gathered
+        else:
+            image[inside] = _display_scale(gathered)
     return Frame(row=plane.row, image=image)
 
 
