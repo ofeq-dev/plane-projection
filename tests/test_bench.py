@@ -155,3 +155,22 @@ def test_cli_rejects_wrong_argument_count(capsys):
     with pytest.raises(SystemExit) as excinfo:
         bench.main(["just", "one", "extra", "line"])
     assert excinfo.value.code == 2
+
+
+def test_corpus_pairs_crosses_every_csv_with_every_volume(tmp_path):
+    (nrrd_dir := tmp_path / "nrrd").mkdir()
+    (csv_dir := tmp_path / "csv").mkdir()
+    for name in ("b", "a"):
+        (nrrd_dir / f"{name}.nrrd").write_bytes(b"x")
+        (csv_dir / f"{name}.csv").write_text("")
+    pairs = bench.corpus_pairs(nrrd_dir, csv_dir)
+    assert [(p.volume.name, p.csv.name) for p in pairs] == [
+        ("b.nrrd", "a.csv"), ("b.nrrd", "b.csv"),
+        ("a.nrrd", "a.csv"), ("a.nrrd", "b.csv"),
+    ]
+
+
+def test_hard_bar_report_states_met_or_not_ed():
+    assert bench.hard_bar_verdict(47.0, hard=30.0, target=100.0).startswith("met")
+    assert "100" in bench.hard_bar_verdict(47.0, hard=30.0, target=100.0)
+    assert bench.hard_bar_verdict(26.8, hard=30.0, target=100.0).startswith("NOT met")

@@ -144,9 +144,17 @@ def choose_min(timings: Sequence[Timing]) -> Timing:
 
 def detect_cpu() -> str:
     """One human-readable line naming this machine's processor and cores."""
+    import os
+
     model = platform.processor() or platform.machine()
-    cores = len(__import__("os").sched_getaffinity(0)) if hasattr(__import__("os"), "sched_getaffinity") else __import__("os").cpu_count() or 1
-    return f"{model} ({cores} cores)"
+    if sys.platform == "linux" and os.path.exists("/proc/cpuinfo"):
+        with open("/proc/cpuinfo") as cpuinfo:
+            for line in cpuinfo:
+                if line.startswith("model name\t"):
+                    model = line.split(":", 1)[1].strip()
+                    break
+    cores = os.sched_getaffinity(0) if hasattr(os, "sched_getaffinity") else range(os.cpu_count() or 1)
+    return f"{model} ({len(cores)} cores)"
 
 
 def report_context() -> ReportContext:
@@ -197,19 +205,91 @@ def write_results(
     results_path.write_text("\n".join(lines) + "\n")
 
 
+@dataclass(frozen=True)
+class CorpusPair:
+    """One (volume, plane list) benchmark pair from the corpus cross-product."""
+
+    volume: Path
+    csv: Path
+
+
+def corpus_pairs(nrrd_dir: Path, csv_dir: Path) -> list[CorpusPair]:
+    """Every CSV crossed with every volume, volumes sorted descending by size seed.
+
+    Preferring the heaviest volume first keeps timing warm-up consistent:
+    slower pairs always measure under similar cache conditions.
+    """
+    volumes = sorted(nrrd_dir.glob("*.nrrd"), reverse=True)
+    csvs = sorted(csv_dir.glob("*.csv"))
+    return [
+        CorpusPair(volume=volume, csv=plane_list)
+        for volume in volumes
+        for plane_list in csvs
+    ]
+
+
+def hard_bar_verdict(fps: float, *, hard: float, target: float) -> str:
+    """The NFR-1 evidence sentence: hard bar and 100 FPS target, explicitly."""
+    if fps >= hard:
+        target_text = (
+            f"target of {target:g} FPS met" if fps >= target
+            else f"target of {target:g} FPS NOT met"
+        )
+        return f"met the {hard:g} FPS hard bar ({target_text})"
+    return f"NOT met the {hard:g} FPS hard bar"
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the harness: ``python bench.py volume.nrrd planes.csv [--repeats N]``."""
     parser = argparse.ArgumentParser(
         prog="bench.py",
         description="Benchmark the plane-projection pipeline (NFR-1/NFR-2).",
     )
-    parser.add_argument("volume", help="input .nrrd volume")
-    parser.add_argument("planes", help="input .csv plane list")
+    parser.add_argument("volume", nargs="?", help="input .nrrd volume")
+    parser.add_argument("planes", nargs="?", help="input .csv plane list")
+    parser.add_argument("--corpus", action="store_true",
+                        help="benchmark every assets/csv/*.csv against every assets/nrrd/*.nrrd")
     parser.add_argument("--repeats", type=int, default=3, metavar="N",
                         help="min-of-repeats count (default: 3)")
     parser.add_argument("--out", metavar="MARKDOWN", default=None,
-                        help="also append the best figures to this results file")
+                        help="write/overwrite this results file (corpus requires it)")
     args = parser.parse_args(argv)
+
+    if args.corpus:
+        if not (args.volume is None and args.planes is None and args.out is not None):
+            parser.error("--corpus takes no positional inputs and requires --out")
+        repo_root = Path(__file__).parent
+        pairs = corpus_pairs(repo_root / "assets" / "nrrd", repo_root / "assets" / "csv")
+        rows = []
+        croissant_full = None
+        for pair in pairs:
+            timings = [
+                timed_pipeline(pair.volume, pair.csv, None, clock=time.perf_counter)
+                for _ in range(args.repeats)
+            ]
+            best = choose_min(timings)
+            figure = throughput(best)
+            label = f"{pair.volume.name} x {pair.csv.name}"
+            volume_ref = pair.volume.relative_to(repo_root)
+            csv_ref = pair.csv.relative_to(repo_root)
+            command = f"python bench.py {volume_ref} {csv_ref} --repeats {args.repeats}"
+            rows.append(ResultRow(label=label, command=command, timing=best))
+            print(f"{label}: {figure:.1f} FPS (min-of-{args.repeats})")
+            if pair.volume.name == "croissant.nrrd" and pair.csv.name == "croissant.csv":
+                croissant_full = figure
+        write_results(Path(args.out), report_context(), rows)
+
+        assert croissant_full is not None  # the corpus always carries croissant x croissant
+        print(
+            f"NFR-1 hard bar on croissant (croissant.nrrd x croissant.csv,"
+            f" {croissant_full:.1f} FPS):"
+            f" {hard_bar_verdict(croissant_full, hard=30.0, target=100.0)}"
+        )
+        print(f"wrote '{args.out}' ({len(rows)} rows)")
+        return 0
+
+    if args.volume is None or args.planes is None:
+        parser.error("expected: volume.nrrd planes.csv (or --corpus)")
 
     timings = [
         timed_pipeline(args.volume, args.planes, None, clock=time.perf_counter)
@@ -229,8 +309,8 @@ def main(argv: list[str] | None = None) -> int:
             command=f"python bench.py {args.volume} {args.planes} --repeats {args.repeats}",
             timing=best,
         )
-        write_results(args.out, report_context(), [row])
-        print(f"appended 1 row to '{args.out}'")
+        write_results(Path(args.out), report_context(), [row])
+        print(f"wrote 1 row to '{args.out}'")
     return 0
 
 

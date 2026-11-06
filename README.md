@@ -25,6 +25,19 @@ python Ex0.py file.nrrd file.csv file.mp4
 
 Tests: `python -m pytest`.
 
+Benchmark (NFR-1/NFR-2 — throughput over load + render, min-of-repeats,
+encoder reported separately):
+
+```sh
+python bench.py assets/nrrd/croissant.nrrd assets/csv/croissant.csv --repeats 3
+python bench.py --corpus --repeats 3 --out benchmarks/results-2026-11-06.md
+```
+
+Latest committed figures: see [`benchmarks/results-2026-11-06.md`](benchmarks/results-2026-11-06.md)
+— croissant (500³ uint8) reached 42.8 FPS on the reference machine with the
+brief's ≥ 30 FPS hard bar met (100 FPS target not met on that machine). Each row of
+that file cites the exact one-line command that reproduced it.
+
 Docs: [`docs/srs.md`](docs/srs.md) (requirements) ·
 [`docs/algorithm.md`](docs/algorithm.md) (frame geometry; interactive
 plain-words walkthrough in [`docs/algorithm.html`](docs/algorithm.html)).
