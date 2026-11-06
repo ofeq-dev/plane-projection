@@ -10,12 +10,13 @@ Requirements are normative in ``docs/srs.md``:
   counts the records (FR-17 groundwork).
 * :func:`render_frames` — the render seam: renders each validated plane to a
   density-sized grayscale frame (FR-12/FR-13; geometry pinned in
-  ``docs/algorithm.md``) and passes error rows through.
+  ``docs/algorithm.md``) and isolates per-row render failures.
 * :func:`canvas_size` / :func:`pad_frame` — the video's fixed even canvas and
   top-left black padding (FR-18/FR-19/FR-21).
+* :func:`render_error_frame` — a black canvas with a red, row-specific banner
+  for validation and rendering failures (FR-14..FR-16).
 * :func:`write_video` — the video container (FR-17/FR-19): one frame per CSV
-  row, in row order; error rows keep black placeholder frames until the
-  error-banner ticket.
+  row, in row order.
 * :func:`main` — argument handling and the whole-run pipeline (FR-1, FR-2).
 
 Canonical coordinate space is voxel-index space, per
@@ -438,14 +439,28 @@ def _render_plane(volume: np.ndarray, plane: Plane) -> Frame:
 def render_frames(
     volume: np.ndarray, records: Sequence[Plane | PlaneError]
 ) -> list[Frame | PlaneError]:
-    """Render validated rows and pass error rows through, in list order (FR-17).
+    """Render validated rows and isolate row failures, in list order (FR-14, FR-17).
 
     This is the single render seam: the CLI and every renderer test call it.
-    Error rows stay :class:`PlaneError` records; the CLI renders their
-    placeholder frames (error visuals belong to the error-frame ticket).
+    Validation errors stay :class:`PlaneError` records. Exceptions raised
+    while rendering an individual valid row are converted to the same
+    per-row error record so later rows still render.
     """
-    return [record if isinstance(record, PlaneError) else _render_plane(volume, record)
-            for record in records]
+    rendered: list[Frame | PlaneError] = []
+    for record in records:
+        if isinstance(record, PlaneError):
+            rendered.append(record)
+            continue
+        try:
+            rendered.append(_render_plane(volume, record))
+        except Exception as error:
+            reason = str(error).replace("\r", " ").replace("\n", " ").strip()
+            if not reason:
+                reason = type(error).__name__
+            rendered.append(
+                PlaneError(record.row, f"render failed ({type(error).__name__}): {reason}")
+            )
+    return rendered
 
 
 def canvas_size(records: Sequence[Frame | PlaneError]) -> tuple[int, int]:
@@ -477,6 +492,60 @@ def pad_frame(image: np.ndarray, canvas: tuple[int, int]) -> np.ndarray:
     padded = np.zeros((height, width), dtype=np.uint8)
     padded[: image.shape[0], : image.shape[1]] = image
     return padded
+
+
+def render_error_frame(error: PlaneError, canvas: tuple[int, int]) -> np.ndarray:
+    """Draw a black BGR frame with the row's error text in a red top banner (FR-14/FR-15)."""
+    width, height = canvas
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+    text = error.banner()
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.5
+    thickness = 1
+    horizontal_padding = 8
+    vertical_padding = 5
+
+    def text_width(value: str) -> int:
+        return cv2.getTextSize(value, font, scale, thickness)[0][0]
+
+    max_width = max(1, width - 2 * horizontal_padding)
+    # Shrink until the widest single word fits its line: overlong words
+    # cannot wrap, so the scale keeps dropping (no clipping — every drawn
+    # glyph stays inside the canvas) until it does.
+    while scale > 0.02 and max(text_width(word) for word in text.split()) > max_width:
+        scale *= 0.8
+
+    lines: list[str] = []
+    line = ""
+    for word in text.split():
+        candidate = f"{line} {word}".strip()
+        if line and text_width(candidate) > max_width:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+
+    (_, line_height), baseline = cv2.getTextSize("Ag", font, scale, thickness)
+    line_step = line_height + baseline + 2
+    banner_height = min(height, len(lines) * line_step + 2 * vertical_padding)
+    cv2.rectangle(image, (0, 0), (width - 1, banner_height - 1), (0, 0, 255), -1)
+    for index, value in enumerate(lines):
+        y = vertical_padding + line_height + index * line_step
+        if y >= banner_height:
+            break
+        cv2.putText(
+            image,
+            value,
+            (horizontal_padding, y),
+            font,
+            scale,
+            (255, 255, 255),
+            thickness,
+            cv2.LINE_AA,
+        )
+    return image
 
 
 # ---------------------------------------------------------------------------
@@ -517,14 +586,14 @@ def write_video(
     canvas: tuple[int, int],
     fps: int = VIDEO_FPS,
 ) -> None:
-    """Write 2D uint8 ``frames`` of one fixed ``canvas`` (W, H) to mp4 (FR-17).
+    """Write grayscale or BGR uint8 frames of one fixed canvas to mp4 (FR-17).
 
-    Frames are written in iteration order (one per CSV row), converted from
-    grayscale to the writer's 3-channel BGR. The container contract (FR-19)
-    is: uniform frame size, 30 FPS container rate, mp4, MPEG-4 Part 2
-    (``mp4v``), even dimensions (yuv420p-style chroma subsampling
-    compatibility). The encoder is OpenCV's ``cv2.VideoWriter`` with the
-    ``mp4v`` fourcc — see docs/adr/0004-video-encoding-via-opencv-mp4v.md.
+    Frames are written in iteration order (one per CSV row); grayscale frames
+    are converted to BGR and color frames are written directly. The container
+    contract (FR-19) is: uniform frame size, 30 FPS container rate, mp4,
+    MPEG-4 Part 2 (``mp4v``), even dimensions (yuv420p-style chroma
+    subsampling compatibility). The encoder is OpenCV's ``cv2.VideoWriter``
+    with the ``mp4v`` fourcc — see docs/adr/0004-video-encoding-via-opencv-mp4v.md.
 
     A generator is accepted so canvas-sized padded copies are transient;
     :func:`render_frames` itself returns one record per row up front.
@@ -552,12 +621,19 @@ def write_video(
         )
     try:
         for frame in frames:
-            if frame.shape != (height, width):
+            if frame.shape not in {(height, width), (height, width, 3)}:
                 raise ValueError(
                     f"frame size {frame.shape[1]}x{frame.shape[0]} does not match canvas"
                     f" {width}x{height}"
                 )
-            writer.write(cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR))
+            if frame.dtype != np.uint8:
+                raise ValueError(f"frame dtype {frame.dtype} is not uint8")
+            bgr_frame = (
+                cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                if frame.ndim == 2
+                else frame
+            )
+            writer.write(bgr_frame)
     finally:
         writer.release()  # flush and close the container even on write failure
 
@@ -571,7 +647,8 @@ def main(argv: list[str] | None = None) -> int:
 
     Exactly three positional arguments (FR-1). Every user-fixable problem
     exits non-zero with a one-line error naming the problem file (FR-2);
-    per-row plane errors arrive with the parsing ticket (FR-14..FR-16).
+    per-row plane errors become bannered frames and do not stop the run
+    (FR-14..FR-16).
     """
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 3:
@@ -588,13 +665,14 @@ def main(argv: list[str] | None = None) -> int:
         records = parse_planes(plane_list_path)
         rendered = render_frames(volume, records)
         canvas = canvas_size(rendered)
-        # Error rows stay placeholder-black until the error-banner ticket:
-        # pad_frame turns the empty image into a full black canvas.
-        blank = np.zeros((0, 0), dtype=np.uint8)
         write_video(
             video_path,
-            (pad_frame(record.image if isinstance(record, Frame) else blank, canvas)
-             for record in rendered),
+            (
+                pad_frame(record.image, canvas)
+                if isinstance(record, Frame)
+                else render_error_frame(record, canvas)
+                for record in rendered
+            ),
             canvas=canvas,
             fps=VIDEO_FPS,
         )
@@ -602,18 +680,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Ex0.py: {e}", file=sys.stderr)
         return 1
 
-    # Per-row verdicts (FR-16 groundwork): the same text the future error
-    # banners will carry, greppable without re-rendering. Valid rows say so;
-    # error rows go to stderr, one line each, and never stop the run.
-    for record in records:
-        if isinstance(record, PlaneError):
-            print(f"Ex0.py: {record.banner()}", file=sys.stderr)
-        else:
-            print(f"row {record.row}: ok ({'trapezoid' if record.is_trapezoid else 'triangle'})")
+    # Error output uses the exact banner text so logs and video agree.
+    for source, result in zip(records, rendered):
+        if isinstance(result, PlaneError):
+            print(result.banner(), file=sys.stderr)
+        elif isinstance(source, Plane):
+            print(f"row {source.row}: ok ({'trapezoid' if source.is_trapezoid else 'triangle'})")
 
-    errors = sum(isinstance(r, PlaneError) for r in records)
+    errors = sum(isinstance(r, PlaneError) for r in rendered)
     print(
-        f"wrote {len(records)} frames ({canvas[0]}x{canvas[1]}, mp4v @{VIDEO_FPS} fps)"
+        f"wrote {len(rendered)} frames ({canvas[0]}x{canvas[1]}, mp4v @{VIDEO_FPS} fps)"
         f" to '{video_path}' ({errors} error row(s))"
     )
     return 0

@@ -7,14 +7,29 @@ the owner's acceptance run uses.
 
 from __future__ import annotations
 
-import cv2
 import subprocess
 import sys
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 import Ex0
+
+
+def read_frames(path: Path) -> list[np.ndarray]:
+    """Read every frame back out of a written mp4 (acceptance probes)."""
+    capture = cv2.VideoCapture(str(path))
+    assert capture.isOpened()
+    frames = []
+    while True:
+        ok, frame = capture.read()
+        if not ok:
+            break
+        frames.append(frame)
+    capture.release()
+    return frames
 
 ASSETS = Path(__file__).parent.parent / "assets"
 
@@ -103,11 +118,8 @@ def test_rejecting_volume_happens_before_counting(tmp_path, capsys, tmp_nrrd):
     reason="corpus assets unavailable",
 )
 def test_brief_command_on_lecturer_example(tmp_path, capsys):
-    # SRS §5.3.1 groundwork: the exact brief command renders valid rows and
-    # keeps one frame per CSV row (FR-17), on the volume the lecturer
-    # encourages. Rows 1-2 render projections at the max frame size
-    # (500x447 -> even 500x448); rows 3-4 keep black placeholder frames
-    # until the error-frame ticket adds their banners.
+    # SRS §5.3.1: valid rows render projections and invalid rows render
+    # bannered error frames, all at the shared canvas size.
     out = tmp_path / "out.mp4"
     code = Ex0.main(
         [str(ASSETS / "nrrd" / "MRHead_1.nrrd"), str(ASSETS / "csv" / "lecturer_example.csv"), str(out)]
@@ -116,37 +128,81 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
     assert code == 0, captured.err
     assert out.exists()
 
-    capture = cv2.VideoCapture(str(out))
-    assert capture.isOpened()
-    frames = []
-    while True:
-        ok, frame = capture.read()
-        if not ok:
-            break
-        frames.append(frame)
+    frames = read_frames(out)
     assert len(frames) == 4
-    assert capture.get(cv2.CAP_PROP_FPS) == 30
-    assert capture.get(cv2.CAP_PROP_FRAME_WIDTH) == 500
-    assert capture.get(cv2.CAP_PROP_FRAME_HEIGHT) == 448
-    capture.release()
+    probe = cv2.VideoCapture(str(out))
+    assert probe.get(cv2.CAP_PROP_FPS) == 30
+    assert probe.get(cv2.CAP_PROP_FRAME_WIDTH) == 500
+    assert probe.get(cv2.CAP_PROP_FRAME_HEIGHT) == 448
+    probe.release()
 
     # MRHead is int16 0..279: full-range display scaling puts its in-volume
-    # samples around mid gray, visibly distinct from the black placeholder of
-    # error rows (the planes extend past the volume, so most of each frame is
-    # black by FR-12d). Lossy mp4v keeps that separation comfortably.
+    # samples around mid gray. The planes extend past the volume, so most of
+    # each valid frame is black by FR-12d.
     assert frames[0].max() > 100 and frames[1].max() > 100
-    assert frames[2].max() < 16 and frames[3].max() < 16
+    for frame in frames[2:]:
+        assert (frame[:, :, 2] > frame[:, :, 0] + 80).any()
+        assert frame[-1, -1].max() < 16
 
-    # FR-16 groundwork: per-row verdicts are logged to the CLI with the same
-    # content the future error banners will carry. lecturer_example's rows
-    # 3 and 4 fail validation (isosceles 20.53; legs 100) and are logged to
-    # stderr while the run continues; rows 1-2 are ok on stdout.
+    # Rows 3 and 4 fail validation (isosceles 20.53; legs 100); each stderr
+    # line is exactly the text carried by its frame's banner.
     assert "wrote 4 frames (500x448" in captured.out
     assert captured.out.count("ok (") == 2
     err_lines = captured.err.strip().splitlines()
-    assert len(err_lines) == 2
-    assert err_lines[0].startswith("Ex0.py: row 3: |dist(a,b) − dist(a,c)| = 20.5")
-    assert err_lines[1].startswith("Ex0.py: row 4: |dist(a1,b) − dist(a2,c)| = 100")
+    assert err_lines == [
+        record.banner()
+        for record in Ex0.parse_planes(ASSETS / "csv" / "lecturer_example.csv")
+        if isinstance(record, Ex0.PlaneError)
+    ]
+
+
+def test_render_exception_between_valid_rows_still_writes_all_frames(
+    tmp_path, capsys, tmp_nrrd, monkeypatch
+):
+    planes = tmp_path / "planes.csv"
+    planes.write_text(
+        "Number of Points (3 or 4),x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4\n"
+        "3,0,0,0,40,0,0,0,40,0,,\n"
+        "3,0,0,0,40,0,0,0,40,0,,\n"
+        "3,0,0,0,40,0,0,0,40,0,,\n"
+    )
+
+    def render(volume, plane):
+        if plane.row == 2:
+            raise RuntimeError("synthetic rendering failure")
+        return Ex0.Frame(plane.row, np.full((32, 32), 180, dtype=np.uint8))
+
+    monkeypatch.setattr(Ex0, "_render_plane", render)
+    out = tmp_path / "interleaved.mp4"
+    code = Ex0.main([str(tmp_nrrd), str(planes), str(out)])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert captured.err == "row 2: render failed (RuntimeError): synthetic rendering failure\n"
+    assert "wrote 3 frames (32x32" in captured.out
+    frames = read_frames(out)
+    assert len(frames) == 3
+    assert frames[0].mean() > 100 and frames[2].mean() > 100
+    assert (frames[1][:, :, 2] > frames[1][:, :, 0] + 80).any()
+
+
+def test_all_invalid_rows_still_produce_error_video(tmp_path, capsys, tmp_nrrd):
+    planes = tmp_path / "invalid.csv"
+    planes.write_text(
+        "Number of Points (3 or 4),x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4\n"
+        "3,0,0,0,5,0,0,0,6,0,,\n"
+        "3,0,0,0,5,0,0,0,6,0,,\n"
+    )
+    out = tmp_path / "all-errors.mp4"
+    assert Ex0.main([str(tmp_nrrd), str(planes), str(out)]) == 0
+    captured = capsys.readouterr()
+
+    assert captured.err.count("row ") == 2
+    assert "wrote 2 frames (256x256" in captured.out
+    frames = read_frames(out)
+    assert len(frames) == 2
+    assert all((frame[:, :, 2] > frame[:, :, 0] + 80).any() for frame in frames)
+    assert all(frame[-1, -1].max() < 16 for frame in frames)
 
 
 @pytest.mark.parametrize(
