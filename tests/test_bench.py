@@ -17,23 +17,11 @@ import cv2
 import numpy as np
 import nrrd
 import pytest
+from conftest import read_frames
 
 sys.path.insert(0, str(Path(__file__).parent))
 import bench
-
-
-def read_frames(path: Path) -> list[np.ndarray]:
-    """Read every frame back out of a written mp4 (same probe as test_cli)."""
-    capture = cv2.VideoCapture(str(path))
-    assert capture.isOpened()
-    frames = []
-    while True:
-        ok, frame = capture.read()
-        if not ok:
-            break
-        frames.append(frame)
-    capture.release()
-    return frames
+import Ex0
 
 
 @pytest.fixture(scope="module")
@@ -56,9 +44,9 @@ def tiny_case(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
 class ScriptedClock:
     """Monkeypatch-friendly clock: yields scripted ``time()`` values in order.
 
-    Values are consumed one per call, exactly like Grafana'd checkpoints:
-    callers get whatever sequence the test scripts, so every measured wall
-    time is deterministic.
+    Values are consumed one per call, exactly like phase checkpoints in the
+    implementation: callers get whatever sequence the test scripts, so every
+    measured wall time is deterministic.
     """
 
     def __init__(self, *values: float) -> None:
@@ -114,7 +102,7 @@ def test_throughput_raises_when_nothing_renders():
         bench.throughput(timing)
 
 
-def test_choose_min_picks_fatest_repeat_by_throughput_clock():
+def test_choose_min_picks_fastest_repeat_by_min_wall():
     """min-of-repeats (NFR-2) keeps the repeat with the shortest wall time,
     which by a fixed frame count is the highest FPS."""
     slow = bench.Timing(frames=100, load_seconds=0.2, render_seconds=1.0, encode_seconds=0.0)
@@ -174,3 +162,52 @@ def test_hard_bar_report_states_met_or_not_ed():
     assert bench.hard_bar_verdict(47.0, hard=30.0, target=100.0).startswith("met")
     assert "100" in bench.hard_bar_verdict(47.0, hard=30.0, target=100.0)
     assert bench.hard_bar_verdict(26.8, hard=30.0, target=100.0).startswith("NOT met")
+
+
+def test_write_results_persists_verdict_sentences(tmp_path):
+    timing = bench.Timing(frames=100, load_seconds=1.0, render_seconds=2.0, encode_seconds=0.5)
+    context = bench.report_context()
+    row = bench.ResultRow(
+        label="croissant.nrrd x croissant.csv",
+        command="python bench.py assets/nrrd/croissant.nrrd assets/csv/croissant.csv --repeats 3",
+        timing=timing,
+    )
+    results_path = tmp_path / "results.md"
+    bench.write_results(
+        results_path, context, [row],
+        verdicts=[
+            "croissant 500³ hard bar: met the 30 FPS hard bar (target of 100 FPS NOT met)",
+            "drift: 0.9% between two min-of-3 runs on croissant x croissant (criterion: < ~10%)",
+        ],
+    )
+    text = results_path.read_text()
+    assert "met the 30 FPS hard bar" in text
+    assert "drift: 0.9%" in text
+    assert "< ~10%" in text
+
+
+def test_write_results_says_which_scopes_go_where(tmp_path):
+    timing = bench.Timing(frames=100, load_seconds=1.0, render_seconds=2.0, encode_seconds=0.5)
+    results_path = tmp_path / "results.md"
+    bench.write_results(results_path, bench.report_context(), [bench.ResultRow("l", "c", timing)])
+    text = results_path.read_text()
+    # NFR-2 must have its "say which": parse/canvas live in the render scope;
+    # the mp4 write is not exercised inside throughput runs.
+    assert "parse" in text
+    assert "throughput runs do not write the mp4" in text
+
+
+def test_iter_canvas_frames_pads_valid_and_banners_errors():
+    records = [
+        Ex0.Frame(row=1, image=np.zeros((2, 2), dtype=np.uint8)),
+        Ex0.PlaneError(row=2, reason="boom"),
+    ]
+    frames = list(Ex0.iter_canvas_frames(records, canvas=(6, 6)))
+    assert frames[0].shape == (6, 6)
+    assert frames[1].shape == (6, 6, 3)
+
+
+def test_measure_best_is_min_of_repeats(tiny_case):
+    volume_path, csv_path = tiny_case
+    timings = bench.measure_best(volume_path, csv_path, repeats=1)
+    assert timings.frames == 2

@@ -95,12 +95,7 @@ def timed_pipeline(
     if video_path is not None:
         Ex0.write_video(
             video_path,
-            (
-                Ex0.pad_frame(record.image, canvas)
-                if isinstance(record, Ex0.Frame)
-                else Ex0.render_error_frame(record, canvas)
-                for record in rendered
-            ),
+            Ex0.iter_canvas_frames(rendered, canvas),
             canvas=canvas,
             fps=Ex0.VIDEO_FPS,
         )
@@ -112,6 +107,19 @@ def timed_pipeline(
         render_seconds=after_render - after_load,
         encode_seconds=encode_seconds,
     )
+
+
+def measure_best(
+    volume_path: str | Path,
+    plane_list_path: str | Path,
+    repeats: int,
+) -> Timing:
+    """min-of-repeats over fresh full runs, timed with the real clock (NFR-2)."""
+    timings = [
+        timed_pipeline(volume_path, plane_list_path, None, clock=time.perf_counter)
+        for _ in range(repeats)
+    ]
+    return choose_min(timings)
 
 
 def throughput(timing: Timing) -> float:
@@ -172,11 +180,14 @@ def write_results(
     results_path: Path,
     context: ReportContext,
     rows: Sequence[ResultRow],
+    verdicts: Sequence[str] = (),
 ) -> None:
     """Write the versioned results file: methodology, hardware, quoted commands.
 
     Every figure's provenance lives in the file itself, so the experiment
-    write-up (TODO #7) cites the file, not folklore.
+    write-up (TODO #7) cites the file, not folklore. ``verdicts`` carries the
+    evidence sentences (hard bar, target, measured drift) so a citation
+    never has to reconstruct them from stdout.
     """
     lines = [
         "# Benchmark results",
@@ -187,8 +198,11 @@ def write_results(
         "",
         "Methodology (NFR-2): wall time via `time.perf_counter()` (monotonic,"
         " highest resolution); best = min-of-repeats (timeit methodology);"
-        " scope = load + render; encode reported separately and excluded from"
-        " every throughput figure; throughput = rendered frames ÷ wall time.",
+        " the **load** scope is the NRRD read; the **render** scope is parse +"
+        " render + canvas assembly; the mp4 write is *not* exercised:"
+        " throughput runs do not write the mp4 — encode seconds appear only in"
+        " the dedicated encode-probe row; throughput = rendered frames ÷"
+        " (load + render) wall time.",
         "",
         "| input | command | frames | load s | render s | encode s | FPS (load+render) |",
         "|---|---|---|---|---|---|---|",
@@ -201,6 +215,8 @@ def write_results(
             f" | {row.timing.load_seconds:.3f} | {row.timing.render_seconds:.3f}"
             f" | {row.timing.encode_seconds:.3f} | {best:.1f} |"
         )
+    if verdicts:
+        lines += ["", *verdicts]
     results_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.write_text("\n".join(lines) + "\n")
 
@@ -253,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="min-of-repeats count (default: 3)")
     parser.add_argument("--out", metavar="MARKDOWN", default=None,
                         help="write/overwrite this results file (corpus requires it)")
+    parser.add_argument("--encode-probe", action="store_true",
+                        help="also run one full run writing a throwaway mp4, to report the encoder's wall time")
     args = parser.parse_args(argv)
 
     if args.corpus:
@@ -260,14 +278,11 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--corpus takes no positional inputs and requires --out")
         repo_root = Path(__file__).parent
         pairs = corpus_pairs(repo_root / "assets" / "nrrd", repo_root / "assets" / "csv")
-        rows = []
-        croissant_full = None
+        rows: list[ResultRow] = []
+        croissant_full: float | None = None
+        drift: float | None = None
         for pair in pairs:
-            timings = [
-                timed_pipeline(pair.volume, pair.csv, None, clock=time.perf_counter)
-                for _ in range(args.repeats)
-            ]
-            best = choose_min(timings)
+            best = measure_best(pair.volume, pair.csv, args.repeats)
             figure = throughput(best)
             label = f"{pair.volume.name} x {pair.csv.name}"
             volume_ref = pair.volume.relative_to(repo_root)
@@ -277,13 +292,50 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{label}: {figure:.1f} FPS (min-of-{args.repeats})")
             if pair.volume.name == "croissant.nrrd" and pair.csv.name == "croissant.csv":
                 croissant_full = figure
-        write_results(Path(args.out), report_context(), rows)
+                # drift criterion (AC): two independent min-of-repeats runs of the
+                # canonical pair must agree within ~10% for the number to be citable
+                second = measure_best(pair.volume, pair.csv, args.repeats)
+                second_figure = throughput(second)
+                drift = abs(second_figure - figure) / figure * 100.0
+                print(f"{label}: repeat run {second_figure:.1f} FPS (drift {drift:.1f}%)")
 
-        assert croissant_full is not None  # the corpus always carries croissant x croissant
-        print(
-            f"NFR-1 hard bar on croissant (croissant.nrrd x croissant.csv,"
-            f" {croissant_full:.1f} FPS):"
-            f" {hard_bar_verdict(croissant_full, hard=30.0, target=100.0)}"
+        if croissant_full is None:
+            raise ValueError(
+                "corpus missing the canonical croissant.nrrd x croissant.csv pair:"
+                " the NFR-1 hard bar cannot be evidenced"
+            )
+
+        # encode probe: the throughput runs never write the mp4 (NFR-2), so a
+        # dedicated measured run records what the encoder itself costs.
+        probe_out = Path(args.out).with_name("bench-encode-probe.mp4")
+        probe = timed_pipeline(
+            repo_root / "assets" / "nrrd" / "croissant.nrrd",
+            repo_root / "assets" / "csv" / "croissant.csv",
+            probe_out,
+            clock=time.perf_counter,
+        )
+        probe_out.unlink(missing_ok=True)
+        rows.append(ResultRow(
+            label="croissant.nrrd x croissant.csv (encode probe: throwaway mp4 written)",
+            command=(
+                "python bench.py assets/nrrd/croissant.nrrd assets/csv/croissant.csv"
+                " --repeats 1 --encode-probe"
+            ),
+            timing=probe,
+        ))
+        print(f"encode probe (croissant): {probe.encode_seconds:.3f}s")
+
+        write_results(
+            Path(args.out),
+            report_context(),
+            rows,
+            verdicts=[
+                "NFR-1 hard bar (croissant.nrrd x croissant.csv, 500³ uint8):"
+                f" {croissant_full:.1f} FPS —"
+                f" {hard_bar_verdict(croissant_full, hard=30.0, target=100.0)}.",
+                f"Repeatability (drift criterion < ~10%): {drift:.1f}% between two"
+                f" independent min-of-{args.repeats} runs of the canonical pair.",
+            ],
         )
         print(f"wrote '{args.out}' ({len(rows)} rows)")
         return 0
@@ -302,6 +354,12 @@ def main(argv: list[str] | None = None) -> int:
         f" encode {best.encode_seconds:.3f}s ->"
         f" {throughput(best):.1f} FPS (load+render, min-of-{args.repeats})"
     )
+
+    if args.encode_probe:
+        probe_out = Path(args.out).with_name("bench-encode-probe.mp4") if args.out else Path("bench-encode-probe.mp4")
+        probe = timed_pipeline(args.volume, args.planes, probe_out, clock=time.perf_counter)
+        probe_out.unlink(missing_ok=True)
+        print(f"encode probe: {probe.encode_seconds:.3f}s (throwaway '{probe_out.name}')")
 
     if args.out is not None:
         row = ResultRow(

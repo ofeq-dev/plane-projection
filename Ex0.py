@@ -579,6 +579,24 @@ def render_error_frame(error: PlaneError, canvas: tuple[int, int]) -> np.ndarray
 # Plane-list counting (FR-17 groundwork; superseded body: one record per row)
 # ---------------------------------------------------------------------------
 
+def iter_canvas_frames(
+    rendered: Iterable[Frame | PlaneError], canvas: tuple[int, int]
+) -> Iterator[np.ndarray]:
+    """Yield canvas-sized padded / bannered frames in run order (FR-18/FR-14).
+
+    The single canvas-assembly shape used by both the CLI and the benchmark
+    harness: a valid row's image is padded top-left (FR-18/FR-21), an error
+    row becomes the bannered frame (FR-14). A generator so canvas-sized
+    copies stay transient inside :func:`write_video`.
+    """
+    for record in rendered:
+        yield (
+            pad_frame(record.image, canvas)
+            if isinstance(record, Frame)
+            else render_error_frame(record, canvas)
+        )
+
+
 def count_planes(path: str | Path) -> int:
     """Count the CSV plane-list's data rows (the header row is excluded).
 
@@ -694,12 +712,7 @@ def main(argv: list[str] | None = None) -> int:
         canvas = canvas_size(rendered)
         write_video(
             video_path,
-            (
-                pad_frame(record.image, canvas)
-                if isinstance(record, Frame)
-                else render_error_frame(record, canvas)
-                for record in rendered
-            ),
+            iter_canvas_frames(rendered, canvas),
             canvas=canvas,
             fps=VIDEO_FPS,
         )
