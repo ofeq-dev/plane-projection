@@ -10,7 +10,7 @@ volume + one CSV plane-list → one `.mp4`, one frame per plane, in list order.
 
 **Live demo & interactive walkthrough:** <https://ofeq-dev.github.io/plane-projection/>
 
-![Projection frame from the lecturer's example CSV](docs/images/example-run/lecturer-row1.png)
+![Croissant projection frame](docs/images/example-run/croissant-row1.png)
 
 ## The problem
 
