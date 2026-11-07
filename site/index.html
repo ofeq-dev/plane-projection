@@ -6,19 +6,22 @@
   <title>Plane Projection — 3D voxel volumes to MP4, one plane per frame</title>
   <meta name="description" content="Render plane projections of a 3D voxel volume: one NRRD volume + one CSV plane-list → one MP4, one frame per plane. Python, fully tested, benchmarked.">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header>
-  <div class="wrap nav">
-    <img src="favicon.svg" alt="Plane Projection logo">
+<header class="site-header">
+  <div class="wrap bar">
+    <img src="favicon.svg" alt="">
     <a class="brand" href="index.html">plane-projection <small>demo &amp; docs</small></a>
     <nav>
-      <a href="#demo">Demo</a>
-      <a href="#pipeline">Pipeline</a>
-      <a href="#benchmarks">Benchmarks</a>
-      <a href="#docs">Docs</a>
+      <a href="#demo">demo</a>
+      <a href="#pipeline">pipeline</a>
+      <a href="#benchmarks">benchmarks</a>
+      <a href="#docs">docs</a>
       <a class="cta" href="https://github.com/ofeq-dev/plane-projection">GitHub ↗</a>
     </nav>
   </div>
@@ -28,21 +31,22 @@
 
   <!-- ============ hero ============ -->
   <section class="hero" id="top">
-    <span class="kicker">I2SE Exercise 1</span>
-    <h1>Plane projections of 3D voxel volumes,<br><span class="grad">from NRRD to MP4</span></h1>
-    <p class="lede">
-      One NRRD volume, one CSV plane-list, one MP4 — a frame per plane. Voxels are sampled
-      with a closest-voxel rule, invalid planes fail loudly with an <strong>error frame</strong>
-      in the video, and a 500³ uint8 volume renders well above the 30 FPS hard bar.
-    </p>
-    <div class="actions">
-      <a class="btn primary" href="#quickstart">Quickstart</a>
-      <a class="btn ghost" href="algorithm.html">Interactive walkthrough →</a>
-      <a class="btn ghost" href="https://github.com/ofeq-dev/plane-projection">Source on GitHub ↗</a>
+    <div>
+      <h1>Plane projections of 3D voxel volumes, from NRRD to MP4</h1>
+      <p class="lede">
+        One NRRD volume, one CSV plane-list, one MP4 — a frame per plane. Voxels are sampled
+        with a closest-voxel rule, invalid planes fail loudly with an <strong>error frame</strong>
+        in the video, and a 500³ uint8 volume renders well above the 30 FPS hard bar.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="#quickstart">Quickstart</a>
+        <a class="btn ghost" href="algorithm.html">Interactive walkthrough</a>
+        <a class="btn quiet" href="https://github.com/ofeq-dev/plane-projection">Source ↗</a>
+      </div>
     </div>
     <figure>
       <video src="videos/lecturer_example.mp4" autoplay muted loop playsinline controls></video>
-      <figcaption>The brief's demo: two valid projections followed by two invalid-plane error frames.</figcaption>
+      <figcaption class="hero-meta"><b>lecturer_example.mp4</b> · two valid projections, then two invalid-plane error frames · I2SE Exercise 1</figcaption>
     </figure>
   </section>
 
@@ -52,38 +56,38 @@
     <p class="section-sub">Everything from the exercise brief, with the engineering around it:
       typed seams, golden tests, and a reproducible benchmark harness.</p>
     <div class="grid cols-3">
-      <div class="card">
-        <div class="icon">🧊</div>
+      <div class="card console">
+        <span class="tag">INPUT</span>
         <h3>NRRD volume loader</h3>
         <p>Reads 8-, 16- and 32-bit unsigned volumes up to 1024³ per axis
           (<code>v = M[x][y][z]</code>), with the geometry cached for fast repeat runs.</p>
       </div>
       <div class="card">
-        <div class="icon">📐</div>
+        <span class="tag">VALIDATE</span>
         <h3>Plane validation</h3>
         <p>3-point planes must be equidistant from a common origin; 4-point planes must form a
           proper rectangle. Invalid specs raise and produce a visible error frame.</p>
       </div>
-      <div class="card">
-        <div class="icon">🎯</div>
+      <div class="card console">
+        <span class="tag">RENDER</span>
         <h3>Closest-voxel sampling</h3>
         <p>Each output pixel takes the nearest voxel centre on the plane — deliberately simple,
           axis-wise fast-path geometry keeps it quick.</p>
       </div>
       <div class="card">
-        <div class="icon">🎬</div>
+        <span class="tag">ENCODE</span>
         <h3>MP4 via OpenCV</h3>
         <p><code>cv2.VideoWriter</code> with the <code>mp4v</code> codec — pip-installable,
           no system ffmpeg needed (ADR 0004), canonical 30 fps.</p>
       </div>
-      <div class="card">
-        <div class="icon">🧪</div>
+      <div class="card console">
+        <span class="tag">VERIFY</span>
         <h3>Tested &amp; typed</h3>
         <p>pytest suite with golden-frame oracles, CLI and validation tests, plus
           <code>mypy --strict</code> on the whole package.</p>
       </div>
       <div class="card">
-        <div class="icon">📊</div>
+        <span class="tag">MEASURE</span>
         <h3>Benchmark harness</h3>
         <p><code>bench.py</code> measures load and render scopes separately, min-of-repeats,
           with a dedicated encode probe and versioned results files.</p>
@@ -97,27 +101,27 @@
     <p class="section-sub">One command, one video. Every stage is a seam that is tested in isolation.</p>
     <div class="pipeline">
       <div class="pipe-step">
-        <span class="tag">Input</span>
+        <span class="tag">INPUT</span>
         <code>volume.nrrd</code>
         <p>3D unsigned voxel array, 8/16/32-bit</p>
       </div>
       <div class="pipe-step">
-        <span class="tag">Input</span>
+        <span class="tag">INPUT</span>
         <code>planes.csv</code>
         <p>3 or 4 points per plane; validated on load</p>
       </div>
       <div class="pipe-step">
-        <span class="tag">Render</span>
+        <span class="tag">RENDER</span>
         <code>project()</code>
         <p>Closest-voxel sampling → one 2D frame per plane</p>
       </div>
       <div class="pipe-step">
-        <span class="tag">Output</span>
+        <span class="tag">OUTPUT</span>
         <code>out.mp4</code>
         <p>One frame per plane; error frames for invalid planes</p>
       </div>
     </div>
-    <pre class="term" style="margin-top:22px">
+    <pre class="term">
 <span class="c"># the brief's demo contract (SRS FR-1)</span>
 <span class="p">$</span> python Ex0.py assets/nrrd/MRHead_1.nrrd assets/csv/lecturer_example.csv out.mp4</pre>
   </section>
@@ -126,7 +130,7 @@
   <section id="demo">
     <h2>Demo videos</h2>
     <p class="section-sub">Real outputs of the tool, byte-for-byte as committed in
-      <a href="https://github.com/ofeq-dev/plane-projection/tree/master/assets/videos" style="color:var(--accent)">assets/videos/</a>.</p>
+      <a href="https://github.com/ofeq-dev/plane-projection/tree/master/assets/videos">assets/videos/</a>.</p>
     <div class="grid cols-3">
       <figure class="video-card">
         <video src="videos/lecturer_example.mp4" controls muted loop playsinline></video>
@@ -141,7 +145,7 @@
         <figcaption><strong>onion.mp4</strong> — 120 frames of a uint8 onion volume.</figcaption>
       </figure>
     </div>
-    <div class="grid cols-3 frames" style="margin-top:20px">
+    <div class="grid cols-3 frames" style="margin-top:14px">
       <figure>
         <img src="img/lecturer-row1.png" alt="Lecturer example frame 1">
         <figcaption>lecturer example — frame 1 (valid plane)</figcaption>
@@ -156,7 +160,7 @@
       </figure>
     </div>
     <p class="section-sub" style="margin-top:16px">Full frame-by-frame commentary lives in
-      <a href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/example-run.md" style="color:var(--accent)">docs/example-run.md</a>.</p>
+      <a href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/example-run.md">docs/example-run.md</a>.</p>
   </section>
 
   <!-- ============ quickstart ============ -->
@@ -183,9 +187,9 @@
     <h2>Benchmarks</h2>
     <p class="section-sub">Min-of-repeats wall time via <code>time.perf_counter()</code>; throughput =
       rendered frames ÷ (load + render); encoding reported separately. Full methodology and all
-      31 runs in <a href="https://github.com/ofeq-dev/plane-projection/blob/master/benchmarks/results-2026-11-06.md" style="color:var(--accent)">benchmarks/results-2026-11-06.md</a>.
+      31 runs in <a href="https://github.com/ofeq-dev/plane-projection/blob/master/benchmarks/results-2026-11-06.md">benchmarks/results-2026-11-06.md</a>.
       Machine: Intel i7-4650U (4 cores), Python 3.12.</p>
-    <div class="card" style="padding:0; overflow:hidden">
+    <div class="table-wrap">
       <table>
         <thead>
           <tr><th>Input (volume × planes)</th><th>Frames</th><th>Load s</th><th>Render s</th><th>FPS (load+render)</th></tr>
@@ -208,44 +212,44 @@
     <h2>Documentation</h2>
     <p class="section-sub">The full engineering story, from requirements to architecture decisions.</p>
     <div class="grid cols-3">
-      <a class="card doc-card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/srs.md">
-        <div class="icon">📋</div>
-        <h3>SRS <span class="arrow">→</span></h3>
-        <p>Software requirements specification: functional and non-functional requirements, traced to the brief.</p>
+      <a class="card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/srs.md">
+        <span class="tag">SRS</span>
+        <h3>Software requirements</h3>
+        <p>Functional and non-functional requirements, traced to the brief.</p>
       </a>
-      <a class="card doc-card" href="algorithm.html">
-        <div class="icon">🧭</div>
-        <h3>Algorithm walkthrough <span class="arrow">→</span></h3>
+      <a class="card console" href="algorithm.html">
+        <span class="tag">LIVE</span>
+        <h3>Algorithm walkthrough</h3>
         <p>Interactive, plain-words tour of the frame geometry — hosted right here on this site.</p>
       </a>
-      <a class="card doc-card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/algorithm.md">
-        <div class="icon">📐</div>
-        <h3>Algorithm (full spec) <span class="arrow">→</span></h3>
+      <a class="card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/algorithm.md">
+        <span class="tag">SPEC</span>
+        <h3>Algorithm (full spec)</h3>
         <p>The complete frame-geometry spec: index space, plane coordinate frames, sampling, error frames.</p>
       </a>
-      <a class="card doc-card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/testing-strategy.md">
-        <div class="icon">🧪</div>
-        <h3>Testing strategy <span class="arrow">→</span></h3>
+      <a class="card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/testing-strategy.md">
+        <span class="tag">TESTS</span>
+        <h3>Testing strategy</h3>
         <p>Seams, oracles, and the golden-frame protocol behind the pytest suite.</p>
       </a>
-      <a class="card doc-card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/example-run.md">
-        <div class="icon">🎞️</div>
-        <h3>Example run <span class="arrow">→</span></h3>
+      <a class="card" href="https://github.com/ofeq-dev/plane-projection/blob/master/docs/example-run.md">
+        <span class="tag">RUN</span>
+        <h3>Example run</h3>
         <p>A real run, frame by frame, with the exported videos and per-frame explanation.</p>
       </a>
-      <a class="card doc-card" href="https://github.com/ofeq-dev/plane-projection/tree/master/docs/adr">
-        <div class="icon">🏗️</div>
-        <h3>ADRs <span class="arrow">→</span></h3>
-        <p>Architecture decision records: LFS for assets, canonical index space, video encoding choice.</p>
+      <a class="card" href="https://github.com/ofeq-dev/plane-projection/tree/master/docs/adr">
+        <span class="tag">ADR</span>
+        <h3>Architecture decisions</h3>
+        <p>LFS for assets, canonical index space, video encoding choice.</p>
       </a>
     </div>
   </section>
 
 </main>
 
-<footer>
+<footer class="site-footer">
   <div class="wrap foot">
-    <img src="favicon.svg" alt="" style="width:22px;height:22px;vertical-align:middle">
+    <img src="favicon.svg" alt="">
     <span>plane-projection — I2SE Exercise 1</span>
     <span class="spacer"></span>
     <a href="https://github.com/ofeq-dev/plane-projection">GitHub</a>
