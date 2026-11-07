@@ -1,3 +1,5 @@
+<p align="center"><img src="favicon.svg" width="96" alt="Plane Projection logo"></p>
+
 # Plane Projection
 
 [![CI](https://github.com/ofeq-dev/plane-projection/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ofeq-dev/plane-projection/actions/workflows/ci.yml)
@@ -11,6 +13,19 @@ volume + one CSV plane-list → one `.mp4`, one frame per plane, in list order.
 **Live demo & interactive walkthrough:** <https://ofeq-dev.github.io/plane-projection/>
 
 ![Croissant projection frame](docs/images/example-run/croissant-row1.png)
+
+## Contents
+
+- [The problem](#the-problem)
+- [Scope](#scope)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Testing](#testing)
+- [Performance](#performance)
+- [Example runs & outputs](#example-runs--outputs)
+- [Docs](#docs)
+- [Repository layout](#repository-layout)
+- [License](#license)
 
 ## The problem
 
@@ -35,6 +50,31 @@ one bad plane never kills the run. Each sample picks the **closest voxel**
 Requirements, acceptance criteria and the exact frame geometry live in
 [`docs/srs.md`](docs/srs.md) and [`docs/algorithm.md`](docs/algorithm.md);
 terms are defined in [`GLOSSARY.md`](GLOSSARY.md).
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["NRRD volume\n(8/16/32-bit)"] --> L["Volume loader"]
+    B["CSV plane list"] --> P["Parse + validate\n(3- or 4-point planes)"]
+    L --> R["Closest-voxel\nprojection renderer"]
+    P --> R
+    R --> F["Frame per plane\n(invalid → error frame)"]
+    F --> V["MP4 writer\n(OpenCV mp4v)"]
+```
+
+Each plane is parsed and validated against the isosceles-triangle / trapezoid
+rules; valid planes are rendered by nearest-voxel sampling onto a canvas sized
+to the largest plane in the list, and everything — good and bad frames — is
+written to one MP4. The full frame geometry and rounding rules are in
+[`docs/algorithm.md`](docs/algorithm.md); key implementation choices and why
+they were made are in [`docs/adr/`](docs/adr/):
+
+| ADR | Decision |
+|---|---|
+| [0001](docs/adr/0001-store-volume-and-video-assets-in-git-lfs.md) | Store large volumes/videos in Git LFS |
+| [0002](docs/adr/0002-canonical-voxel-index-space.md) | Canonical voxel-index space (no world-space headers) |
+| [0004](docs/adr/0004-video-encoding-via-opencv-mp4v.md) | Video encoding via OpenCV `mp4v` (pip-only, no system ffmpeg) |
 
 ## Scope
 
