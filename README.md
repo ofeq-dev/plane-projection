@@ -23,8 +23,8 @@ A plane arrives as 3 or 4 points in a CSV row:
 
 | Points | Geometry | Validity rule (with `EPS = 0.001`) |
 |---:|---|---|
-| 3 | isosceles triangle `(a, b, c)` | `|dist(a,b) − dist(a,c)| < EPS` |
-| 4 | isosceles trapezoid `(a1, a2, b, c)` | `|dist(a1,b) − dist(a2,c)| < EPS`, `dist(a1,a2) ≤ dist(b,c)`, both legs on one plane |
+| 3 | isosceles triangle `(a, b, c)` | `\|dist(a,b) − dist(a,c)\| < EPS` |
+| 4 | isosceles trapezoid `(a1, a2, b, c)` | `\|dist(a1,b) − dist(a2,c)\| < EPS`, `dist(a1,a2) ≤ dist(b,c)`, both legs on one plane |
 
 An invalid row raises internally and becomes a **black error frame** with a red
 banner naming the row and the failing rule; the remaining rows still render, so
@@ -78,6 +78,8 @@ python Ex0.py assets/nrrd/MRHead_1.nrrd assets/csv/lecturer_example.csv out.mp4
 ```
 row 1: ok (triangle)
 row 2: ok (trapezoid)
+row 3: |dist(a,b) − dist(a,c)| = 20.5284 ≥ EPS = 0.001 (dist(a,b) = 497.393, dist(a,c) = 476.865)
+row 4: |dist(a1,b) − dist(a2,c)| = 100 ≥ EPS = 0.001 (dist(a1,b) = 300, dist(a2,c) = 400)
 wrote 4 frames (500x448, mp4v @30 fps) to 'out.mp4' (2 error row(s))
 ```
 
