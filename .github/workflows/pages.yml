@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+      - name: Install ffmpeg (no longer preinstalled on ubuntu-latest runners)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Stage site (docs + videos + volumes referenced by the site)
         run: |
           mkdir -p site/videos site/img
