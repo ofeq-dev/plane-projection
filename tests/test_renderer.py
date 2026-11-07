@@ -15,13 +15,14 @@ import numpy as np
 import pytest
 
 import Ex0
+from plane_validation import Plane, PlaneError, parse_planes
 from render_cases import CASES, ramp_volume, short_ramp_volume
 
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
 
 def frame_of(volume, points):
-    records = Ex0.render_frames(volume, [Ex0.Plane(row=1, points=tuple(points))])
+    records = Ex0.render_frames(volume, [Plane(row=1, points=tuple(points))])
     assert len(records) == 1
     frame = records[0]
     assert isinstance(frame, Ex0.Frame)
@@ -115,9 +116,9 @@ def test_corpus_rows_render_at_density_dimensions_with_content(
     # FR-12b on the real corpus: head/onion's 255-length edges give 255-pixel
     # frames; croissant's 559.02 leg gives 559 rows, 500 base gives 500.
     volume = Ex0.load_volume(f"assets/nrrd/{volume_name}.nrrd")
-    records = Ex0.parse_planes(f"assets/csv/{csv_name}")
+    records = parse_planes(f"assets/csv/{csv_name}")
     rendered = Ex0.render_frames(volume, records)
-    assert not any(isinstance(r, Ex0.PlaneError) for r in rendered)
+    assert not any(isinstance(r, PlaneError) for r in rendered)
 
     first = rendered[0]
     assert isinstance(first, Ex0.Frame)
@@ -130,7 +131,7 @@ def test_head_frames_beyond_the_volume_are_black_regions_not_errors():
     # FR-12d: head.csv's oblique rows extend past z=0, so part of the frame
     # samples outside M and renders black while the rest carries the slice.
     volume = Ex0.load_volume("assets/nrrd/MRHead_1.nrrd")
-    records = Ex0.parse_planes("assets/csv/head.csv")
+    records = parse_planes("assets/csv/head.csv")
     rendered = Ex0.render_frames(volume, records)
     frame = rendered[200]  # row 201: z runs 146.46 down to -17.46
     assert isinstance(frame, Ex0.Frame)
@@ -140,9 +141,9 @@ def test_head_frames_beyond_the_volume_are_black_regions_not_errors():
 
 def test_render_frames_passes_error_rows_through_in_order():
     volume = np.zeros((4, 4, 1), dtype=np.uint8)
-    ok1 = Ex0.Plane(row=1, points=((1, 1, 0), (1, 3, 0), (3, 1, 0)))
-    bad = Ex0.PlaneError(row=2, reason="zero-length leg a→b (a == b)")
-    ok3 = Ex0.Plane(row=3, points=((0, 0, 0), (0, 2, 0), (2, 0, 0)))
+    ok1 = Plane(row=1, points=((1, 1, 0), (1, 3, 0), (3, 1, 0)))
+    bad = PlaneError(row=2, reason="zero-length leg a→b (a == b)")
+    ok3 = Plane(row=3, points=((0, 0, 0), (0, 2, 0), (2, 0, 0)))
     records = Ex0.render_frames(volume, [ok1, bad, ok3])
     assert [r.row for r in records] == [1, 2, 3]
     assert isinstance(records[0], Ex0.Frame)
@@ -155,7 +156,7 @@ def test_canvas_is_the_max_frame_size_made_even():
     # renderable frames, rounded up to even for the mp4v writer.
     records = [
         Ex0.Frame(row=1, image=np.zeros((3, 2), dtype=np.uint8)),
-        Ex0.PlaneError(row=2, reason="bad plane"),
+        PlaneError(row=2, reason="bad plane"),
         Ex0.Frame(row=3, image=np.zeros((2, 3), dtype=np.uint8)),
     ]
     assert Ex0.canvas_size(records) == (4, 4)
@@ -164,14 +165,14 @@ def test_canvas_is_the_max_frame_size_made_even():
 def test_canvas_falls_back_to_placeholder_when_no_row_renders():
     # All-error CSV still yields a video (FR-20); there is no renderable
     # frame size to take a max over, so the placeholder canvas carries it.
-    records = [Ex0.PlaneError(row=1, reason="bad plane")]
+    records = [PlaneError(row=1, reason="bad plane")]
     assert Ex0.canvas_size(records) == Ex0.PLACEHOLDER_CANVAS
     assert Ex0.canvas_size([]) == Ex0.PLACEHOLDER_CANVAS
 
 
 def test_error_frame_has_red_banner_white_text_and_black_remainder():
     canvas = Ex0.render_error_frame(
-        Ex0.PlaneError(row=7, reason="|dist(a1,b) − dist(a2,c)| = 100 ≥ EPS=0.001"),
+        PlaneError(row=7, reason="|dist(a1,b) − dist(a2,c)| = 100 ≥ EPS=0.001"),
         (256, 256),
     )
     assert canvas.shape == (256, 256, 3)
@@ -184,7 +185,7 @@ def test_error_frame_wrapping_and_determinism():
     # FR-15: the banner carries the row index followed by the specific rule;
     # long reasons wrap to fill the fixed top corner, and the same record
     # always produces the identical frame (banner determinism, FR-16).
-    error = Ex0.PlaneError(
+    error = PlaneError(
         row=9,
         reason=(
             "|dist(a1,b) − dist(a2,c)| = 100 ≥ EPS = 0.001"
@@ -206,14 +207,14 @@ def test_error_frame_truncation_keeps_text_inside_canvas():
     # (white text, none below the banner band); the pathological single
     # overlong word cannot wrap, so it is drawn at the minimum scale and
     # blends into the banner rather than crashing or escaping the canvas.
-    error = Ex0.PlaneError(row=3, reason=" ".join(["ox"] * 60))
+    error = PlaneError(row=3, reason=" ".join(["ox"] * 60))
     canvas = Ex0.render_error_frame(error, (64, 32))
     assert canvas.shape == (32, 64, 3)
     assert canvas[0, 0].tolist() == [0, 0, 255]
     assert ((canvas[:20] == (255, 255, 255)).all(axis=2)).any()
     assert not ((canvas[20:] == (255, 255, 255)).all(axis=2)).any()
 
-    giant = Ex0.render_error_frame(Ex0.PlaneError(row=3, reason="x" * 200), (64, 32))
+    giant = Ex0.render_error_frame(PlaneError(row=3, reason="x" * 200), (64, 32))
     assert giant.shape == (32, 64, 3)
     assert ((giant[..., 2] == 255) & (giant[..., 0] == 0)).any()  # red banner intact
 

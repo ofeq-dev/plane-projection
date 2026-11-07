@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 import Ex0
+from plane_validation import Plane, PlaneError, parse_planes
 
 
 def read_frames(path: Path) -> list[np.ndarray]:
@@ -151,8 +152,8 @@ def test_brief_command_on_lecturer_example(tmp_path, capsys):
     err_lines = captured.err.strip().splitlines()
     assert err_lines == [
         record.banner()
-        for record in Ex0.parse_planes(ASSETS / "csv" / "lecturer_example.csv")
-        if isinstance(record, Ex0.PlaneError)
+        for record in parse_planes(ASSETS / "csv" / "lecturer_example.csv")
+        if isinstance(record, PlaneError)
     ]
 
 
