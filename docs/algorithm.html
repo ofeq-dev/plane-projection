@@ -7,17 +7,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+<!-- shared site styles: ../site/ when previewing from docs/, plain path on Pages -->
+<link rel="stylesheet" href="../site/style.css">
+<link rel="stylesheet" href="style.css">
 <style>
   :root {
-    --paper: #e9ece6;
-    --ink: #14201b;
-    --ink-soft: #46564d;
-    --rule: #c2ccc1;
-    --panel: #0e1713;
-    --panel-2: #141f1a;
-    --panel-edge: #27352d;
-    --panel-ink: #e6ede7;
-    --panel-muted: #95a69c;
+    --paper: #edefe7;
+    --ink: #131f19;
+    --ink-soft: #4a584f;
+    --rule: #cdd4c8;
+    --panel: #101a15;
+    --panel-2: #16221c;
+    --panel-edge: #2b3a31;
+    --panel-ink: #e7ede8;
+    --panel-muted: #93a49a;
     --accent: #63d0cf;
     --accent-deep: #0c6b6e;
     --danger: #ff8a7a;
@@ -39,7 +42,7 @@
     margin: 0;
     background: var(--paper);
     color: var(--ink);
-    font: 400 18px/1.62 var(--serif);
+    font: 400 17px/1.62 var(--serif);
     -webkit-font-smoothing: antialiased;
   }
   main { max-width: 1120px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
@@ -48,7 +51,7 @@
   a:hover { color: var(--ink); }
   code {
     font: 400 .86em/1.4 var(--mono);
-    background: rgba(20, 32, 27, .07);
+    background: rgba(19, 31, 25, .07);
     padding: .08em .3em;
     border-radius: 2px;
   }
@@ -71,8 +74,8 @@
     border-top: 1px solid var(--ink);
     border-bottom: 1px solid var(--rule);
     background-image:
-      linear-gradient(rgba(20, 32, 27, .045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(20, 32, 27, .045) 1px, transparent 1px);
+      linear-gradient(rgba(19, 31, 25, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(19, 31, 25, .045) 1px, transparent 1px);
     background-size: 34px 34px;
   }
   h1 {
@@ -141,7 +144,7 @@
     border: 1px solid #08100c;
     border-top: 2px solid var(--accent);
   }
-  .workbench code { background: rgba(230, 237, 231, .1); }
+  .workbench code { background: rgba(231, 237, 232, .1); }
   .bench-head {
     display: flex;
     flex-wrap: wrap;
@@ -283,8 +286,8 @@
     align-items: center;
     justify-content: center;
     font: 600 clamp(.58rem, 2.9vw, .95rem)/1 var(--mono);
-    border: 1px solid rgba(230, 237, 231, .13);
-    background: rgba(230, 237, 231, .03);
+    border: 1px solid rgba(231, 237, 232, .13);
+    background: rgba(231, 237, 232, .03);
   }
   .frame-cell.filled { border-color: transparent; }
   .cell-value {
@@ -344,11 +347,11 @@
     color: var(--panel-muted);
     text-align: center;
     padding: .4rem 0;
-    border: 1px solid rgba(230, 237, 231, .14);
+    border: 1px solid rgba(231, 237, 232, .14);
     border-left: 0;
-    background: rgba(230, 237, 231, .02);
+    background: rgba(231, 237, 232, .02);
   }
-  .tick:first-child { border-left: 1px solid rgba(230, 237, 231, .14); }
+  .tick:first-child { border-left: 1px solid rgba(231, 237, 232, .14); }
   .tick.chosen { background: rgba(99, 208, 207, .16); color: #dffbfa; box-shadow: inset 0 0 0 1px var(--accent); }
   .tick.out { border-top-style: dashed; border-bottom-style: dashed; color: rgba(255, 138, 122, .55); }
   .tick.chosen.out { background: rgba(255, 138, 122, .14); box-shadow: inset 0 0 0 1px var(--danger); color: #ffd7d1; }
@@ -390,7 +393,7 @@
     width: 2.7rem;
     height: 2.7rem;
     flex: none;
-    border: 1px solid rgba(230, 237, 231, .25);
+    border: 1px solid rgba(231, 237, 232, .25);
   }
   .verdict strong { font: 600 1.55rem/1 var(--mono); letter-spacing: -.02em; }
   .verdict.black strong { color: var(--panel-muted); }
@@ -495,6 +498,20 @@
 </style>
 </head>
 <body>
+<!-- Links are written relative to the Pages site root; the deploy workflow
+     stages this file next to index.html. -->
+<header class="site-header">
+  <div class="wrap bar">
+    <img src="favicon.svg" alt="">
+    <a class="brand" href="index.html">plane-projection <small>demo &amp; docs</small></a>
+    <nav>
+      <a href="index.html#demo">demo</a>
+      <a href="index.html#benchmarks">benchmarks</a>
+      <a href="algorithm.md">full spec</a>
+      <a class="cta" href="https://github.com/ofeq-dev/plane-projection">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
 <main>
   <header class="page-head">
     <h1>From plane<br>to pixel</h1>
@@ -678,6 +695,16 @@
     finishes, the page recomputes the frame and compares it to the fixture.
   </p>
 </main>
+<footer class="site-footer">
+  <div class="wrap foot">
+    <img src="favicon.svg" alt="">
+    <span>plane-projection — I2SE Exercise 1</span>
+    <span class="spacer"></span>
+    <a href="index.html">demo home</a>
+    <a href="https://github.com/ofeq-dev/plane-projection">GitHub</a>
+    <a href="https://github.com/ofeq-dev/plane-projection/blob/master/LICENSE">MIT License</a>
+  </div>
+</footer>
 
 <script>
 "use strict";
@@ -895,7 +922,7 @@ function drawPlane(example, model, state) {
     const isCurrent = current !== null && rowIndex === current.rowIndex;
     const walked = current === null || rowIndex < current.rowIndex;
     const color = isCurrent ? "#63d0cf"
-      : walked ? "rgba(99, 208, 207, .42)" : "rgba(230, 237, 231, .15)";
+      : walked ? "rgba(99, 208, 207, .42)" : "rgba(231, 237, 232, .15)";
     s += `<line x1="${x1}" x2="${x2}" y1="${y1}" y2="${y2}"
                 stroke="${color}" stroke-width="${isCurrent ? 2.4 : walked ? 1.3 : 1}"/>`;
   });
@@ -903,7 +930,7 @@ function drawPlane(example, model, state) {
   // Outline: top edge, right leg, base, left leg.
   const outline = [[-topHalf, 0], [topHalf, 0], [baseHalf, leg], [-baseHalf, leg]];
   s += `<polygon points="${outline.map(([u, v]) => at(u, v).join(",")).join(" ")}"
-        fill="rgba(230, 237, 231, .045)" stroke="rgba(230, 237, 231, .5)" stroke-width="1.3"/>`;
+        fill="rgba(231, 237, 232, .045)" stroke="rgba(231, 237, 232, .5)" stroke-width="1.3"/>`;
 
   // Pixel-centre positions along the current row, with the sampled ones marked.
   if (current) {
@@ -928,7 +955,7 @@ function drawPlane(example, model, state) {
         const wallU = (k + 0.5 - travelCentre) / travelDir;
         const [wx] = toXY(wallU, v);
         s += `<line x1="${wx.toFixed(1)}" x2="${wx.toFixed(1)}" y1="${(rowY - bandHalf).toFixed(1)}"
-                      y2="${(rowY + bandHalf).toFixed(1)}" stroke="rgba(230, 237, 231, .3)"
+                      y2="${(rowY + bandHalf).toFixed(1)}" stroke="rgba(231, 237, 232, .3)"
                       stroke-width="1" stroke-dasharray="2 3"/>`;
         s += `<text x="${wx.toFixed(1)}" y="${(rowY - bandHalf + 10).toFixed(1)}" text-anchor="middle"
                       fill="rgba(149, 166, 156, .6)" font-family="${mono}"
@@ -941,7 +968,7 @@ function drawPlane(example, model, state) {
       const sampled = columnIndex <= current.columnIndex;
       const isCurrent = columnIndex === current.columnIndex;
       if (!sampled) {
-        s += `<circle cx="${x}" cy="${y}" r="1.3" fill="rgba(230, 237, 231, .18)"/>`;
+        s += `<circle cx="${x}" cy="${y}" r="1.3" fill="rgba(231, 237, 232, .18)"/>`;
         return;
       }
       if (isCurrent) {
@@ -955,7 +982,7 @@ function drawPlane(example, model, state) {
                       stroke="rgba(255, 138, 122, .75)" stroke-width="1.2" stroke-dasharray="2 3"/>`;
         }
         s += `<circle cx="${x}" cy="${y}" r="5.6" fill="${pixel.inside ? "#63d0cf" : "#ff8a7a"}"
-                      stroke="#0e1713" stroke-width="1.6"/>`;
+                      stroke="#101a15" stroke-width="1.6"/>`;
         // Full label on the pixel being placed: its original (pre-rounding)
         // value on the row's travel axis, and the cube that value lands on.
         if (pixel.insideRow) {
@@ -1007,7 +1034,7 @@ function drawPlane(example, model, state) {
     const nameY = isTop ? y - 24 : y + 25;
     const csvY = isTop ? y - 10 : y + 39;
     s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.4"
-                  fill="${CORNER_COLORS[name]}" stroke="#0e1713" stroke-width="1.2"/>`;
+                  fill="${CORNER_COLORS[name]}" stroke="#101a15" stroke-width="1.2"/>`;
     s += `<text x="${x.toFixed(1)}" y="${nameY.toFixed(1)}" text-anchor="middle"
                   fill="${CORNER_COLORS[name]}" font-family="${mono}"
                   font-size="12.5">${name}</text>
@@ -1017,7 +1044,7 @@ function drawPlane(example, model, state) {
   });
   if (apex) {
     s += `<circle cx="${cx}" cy="${topY}" r="3.4" fill="${CORNER_COLORS.top_left}"
-                  stroke="#0e1713" stroke-width="1.2"/>
+                  stroke="#101a15" stroke-width="1.2"/>
           <text x="${cx}" y="${topY - 24}" text-anchor="middle"
                   fill="${CORNER_COLORS.top_left}" font-family="${mono}"
                   font-size="12.5">top_left = top_right</text>
