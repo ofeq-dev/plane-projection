@@ -60,13 +60,15 @@
         <span class="tag">INPUT</span>
         <h3>NRRD volume loader</h3>
         <p>Reads 8-, 16- and 32-bit unsigned volumes up to 1024³ per axis
-          (<code>v = M[x][y][z]</code>), with the geometry cached for fast repeat runs.</p>
+          (<code>v = M[x][y][z]</code>), rendered with a fully vectorized
+          numpy path.</p>
       </div>
       <div class="card">
         <span class="tag">VALIDATE</span>
         <h3>Plane validation</h3>
-        <p>3-point planes must be equidistant from a common origin; 4-point planes must form a
-          proper rectangle. Invalid specs raise and produce a visible error frame.</p>
+        <p>3-point planes must be isosceles (legs equal from the first point);
+          4-point planes must be an isosceles trapezoid. Invalid specs raise
+          and produce a visible error frame.</p>
       </div>
       <div class="card">
         <span class="tag">RENDER</span>
@@ -187,19 +189,19 @@
     <h2>Benchmarks</h2>
     <p class="section-sub">Min-of-repeats wall time via <code>time.perf_counter()</code>; throughput =
       rendered frames ÷ (load + render); encoding reported separately. Full methodology and all
-      31 runs in <a href="https://github.com/ofeq-dev/plane-projection/blob/master/benchmarks/results-2026-11-06.md">benchmarks/results-2026-11-06.md</a>.
-      Machine: Intel i7-4650U (4 cores), Python 3.12.</p>
+      31 runs in <a href="https://github.com/ofeq-dev/plane-projection/blob/master/benchmarks/results-2026-11-07.md">benchmarks/results-2026-11-07.md</a>.
+      Machine: Intel i7-4650U (4 cores), Python 3.15.</p>
     <div class="table-wrap">
       <table>
         <thead>
           <tr><th>Input (volume × planes)</th><th>Frames</th><th>Load s</th><th>Render s</th><th>FPS (load+render)</th></tr>
         </thead>
         <tbody>
-          <tr><td>croissant.nrrd × croissant.csv <em>(canonical, 500³ uint8)</em></td><td class="num">100</td><td class="num">1.016</td><td class="num">1.276</td><td class="num"><span class="badge-pass">43.6 ✓ NFR-1 hard bar</span></td></tr>
-          <tr><td>onion.nrrd × head.csv</td><td class="num">280</td><td class="num">0.061</td><td class="num">0.672</td><td class="num">382.0</td></tr>
-          <tr><td>MRHead_1.nrrd × head.csv</td><td class="num">280</td><td class="num">0.086</td><td class="num">0.649</td><td class="num">381.3</td></tr>
-          <tr><td>biscuit_cake.nrrd × biscuit_cake.csv</td><td class="num">120</td><td class="num">0.095</td><td class="num">0.336</td><td class="num">278.3</td></tr>
-          <tr><td>swiss_roll.nrrd × biscuit_cake.csv</td><td class="num">120</td><td class="num">0.245</td><td class="num">0.381</td><td class="num">191.8</td></tr>
+          <tr><td>croissant.nrrd × croissant.csv <em>(canonical, 500³ uint8)</em></td><td class="num">100</td><td class="num">0.878</td><td class="num">1.116</td><td class="num"><span class="badge-pass">50.1 ✓ NFR-1 hard bar</span></td></tr>
+          <tr><td>onion.nrrd × head.csv</td><td class="num">280</td><td class="num">0.050</td><td class="num">0.596</td><td class="num">433.5</td></tr>
+          <tr><td>MRHead_1.nrrd × head.csv</td><td class="num">280</td><td class="num">0.087</td><td class="num">0.650</td><td class="num">380.2</td></tr>
+          <tr><td>biscuit_cake.nrrd × biscuit_cake.csv</td><td class="num">120</td><td class="num">0.091</td><td class="num">0.339</td><td class="num">278.6</td></tr>
+          <tr><td>swiss_roll.nrrd × biscuit_cake.csv</td><td class="num">120</td><td class="num">0.180</td><td class="num">0.343</td><td class="num">229.3</td></tr>
         </tbody>
       </table>
     </div>
