@@ -119,14 +119,14 @@ Measured end-to-end (load + render, min-of-repeats) on the reference machine:
 
 | Input | Frames | FPS |
 |---|---:|---:|
-| `croissant.nrrd` × `croissant.csv` — 500³ uint8, the canonical 500³ case | 100 | **43.6** |
-| `onion.nrrd` × `head.csv` | 280 | 382.0 |
-| `MRHead_1.nrrd` × `head.csv` | 280 | 381.3 |
+| `croissant.nrrd` × `croissant.csv` — 500³ uint8, the canonical 500³ case | 100 | **50.1** |
+| `onion.nrrd` × `head.csv` | 280 | 433.5 |
+| `MRHead_1.nrrd` × `head.csv` | 280 | 380.2 |
 
 The ≥ 30 FPS hard bar is met; the 100 FPS aspirational target is not met on
 this (2013 dual-core) machine. Every row of the full 30-case cross-product —
 with the exact one-line command that reproduced it — is in
-[`benchmarks/results-2026-11-06.md`](benchmarks/results-2026-11-06.md).
+[`benchmarks/results-2026-11-07.md`](benchmarks/results-2026-11-07.md).
 Reproduce with:
 
 ```sh
@@ -188,7 +188,11 @@ volume has a matching CSV in [`assets/csv/`](assets/csv/), and
 ## Repository layout
 
 ```
-Ex0.py                    CLI + loader + validation + renderer + writer (single-file deliverable)
+Ex0.py                    CLI orchestrator (imports from modules below)
+errors.py                 Shared UsageError exception
+geometry.py               Scalar geometry helpers (dist, cross, sub, dot)
+csv_reader.py             FR-9 tolerant CSV row iterator
+plane_validation.py       Plane parsing + validation (parse_planes, count_planes)
 bench.py                  Benchmark harness (corpus cross-product, min-of-repeats)
 tests/                    pytest suite (unit, golden, CLI/MP4, benchmark)
 assets/nrrd|csv|videos/   Sample volumes, plane lists and rendered outputs (Git LFS for large files)
