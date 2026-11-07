@@ -129,7 +129,7 @@ change to the sampled values shows up immediately, byte-for-byte.
 
 - **Real timing.** `tests/test_bench.py` injects a scripted clock. FPS,
   hardware, drift and the NFR-1 verdict belong to `bench.py` and
-  [`benchmarks/results-2026-11-06.md`](../benchmarks/results-2026-11-06.md);
+  [`benchmarks/results-2026-11-07.md`](../benchmarks/results-2026-11-07.md);
   asserting wall time in the suite would only make it flaky.
 - **Encoder-exact pixels.** mp4v is lossy, so video tests assert decoded
   properties (frame count, size, fps, presence/absence of content, black

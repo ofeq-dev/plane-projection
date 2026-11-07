@@ -33,6 +33,7 @@ from typing import Callable, Sequence
 import numpy
 
 import Ex0
+from plane_validation import parse_planes
 
 
 Clock = Callable[[], float]
@@ -85,7 +86,7 @@ def timed_pipeline(
     start = clock()
     volume = Ex0.load_volume(volume_path)
     after_load = clock()
-    records = Ex0.parse_planes(plane_list_path)
+    records = parse_planes(plane_list_path)
     rendered = Ex0.render_frames(volume, records)
     canvas = Ex0.canvas_size(rendered)
     after_render = clock()
