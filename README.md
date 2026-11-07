@@ -149,6 +149,27 @@ visible as the gray/black boundary. A uint8 volume (`onion`) has full contrast:
 Frame-by-frame commentary, canvas sizing and byte-identical reproducibility
 notes: [`docs/example-run.md`](docs/example-run.md).
 
+### Sample data
+
+The corpus covers the brief's 8/16/32-bit unsigned element types (plus the
+lecturer's signed `int16` starter volume) and both 3- and 4-point planes:
+
+| Volume | Dimensions | Type | Plane list |
+|---|---|---|---|
+| `MRHead_1.nrrd` | 256 × 256 × 130 | `int16` | `lecturer_example`, `head` |
+| `croissant.nrrd` | 500 × 500 × 500 | `uint8` | `croissant` |
+| `onion.nrrd` | 256 × 256 × 130 | `uint8` | `onion` |
+| `biscuit_cake.nrrd` | 256 × 256 × 130 | `uint16` | `biscuit_cake` |
+| `swiss_roll.nrrd` | 256 × 256 × 130 | `uint32` | `swiss_roll` |
+
+`MRHead_1.nrrd` is the lecturer's 3D Slicer MRI sample (donated to the Slicer
+project without restrictions — see
+[`docs/research/01-data-formats.md`](docs/research/01-data-formats.md#3d-slicer--mrhead-provenance-of-the-mri-example));
+its signed `int16` type is tolerated per [SRS FR-4](docs/srs.md). The other
+volumes are the exercise corpus covering each unsigned element type. Every
+volume has a matching CSV in [`assets/csv/`](assets/csv/), and
+`bench.py --corpus` runs the whole cross-product.
+
 ## Docs
 
 | Document | Contents |
