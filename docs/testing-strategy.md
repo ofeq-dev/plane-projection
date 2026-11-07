@@ -137,9 +137,6 @@ change to the sampled values shows up immediately, byte-for-byte.
 - **Internal structure.** No test asserts array shapes inside the renderer,
   the rounding helper directly, or that a particular loop was vectorized.
   Those are implementation choices; the frame is the contract.
-- **Cross-student orientation.** SRS §5.3.3 is a manual comparison against a
-  classmate's build, performed once when conventions are frozen; it is not
-  automated.
 - **Multiprocessing/GPU.** Out of scope per SRS §1.2.
 
 ## 7. Running the suite

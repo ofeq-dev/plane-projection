@@ -1,6 +1,6 @@
 # Software Requirements Specification — Plane Projection
 
-Status: **draft** — pending owner review. Context: exercise brief `I2SE_Exe1.docx`
+Status: **approved** — owner-reviewed 2026-11-07. Context: exercise brief `I2SE_Exe1.docx`
 (To-Do #2). Language follows the [Wiegers SRS template](https://research.cs.queensu.ca/home/emads/teaching/slides/srs_template_sep14.pdf)
 (outline only; the full [ISO/IEC/IEEE 29148](https://www.iso.org/standard/72089.html)
 process machinery is explicitly out of scope for this project size). Domain terms are
@@ -105,9 +105,7 @@ this SRS pins what the tool must accept, produce, and how fast.
     column; 4-point planes render rows whose width interpolates between the top edge
     `dist(a1,a2)` and the base `dist(b,c)` — FR-10's rule keeps the top edge no wider
     than the base, so no rendered row is wider than the base, which the last row spans
-    exactly. No mirroring or flipping. Anchored to the lecturer's reference pseudocode for
-    cross-student comparability; verified against a classmate's output on common planes
-    (see §5.3) before freezing.
+    exactly. No mirroring or flipping. Anchored to the lecturer's reference pseudocode.
   - **FR-12d** Out-of-volume samples (`p` not in `M`) render as 0 (black), per the brief.
   - **FR-12e** Display scaling: voxel values are shown over the file's full dtype range
     without content-based stretching ([scikit-image dtype-range table](https://scikit-image.org/docs/stable/user_guide/data_types.html)).
@@ -174,9 +172,7 @@ this SRS pins what the tool must accept, produce, and how fast.
    render projections.
 2. `head.csv` against `MRHead_1` produces a video of axial slices, black above/below
    (rows whose z-coordinate leaves the volume).
-3. Cross-student check: the same CSV, rendered by a classmate's implementation, matches
-   FR-12c's orientation (or the flip is fixed and re-anchored before freeze).
-4. Benchmark harness (§5.4) reports ≥30 FPS on croissant with the corpus's own CSVs.
+3. Benchmark harness (§5.4) reports ≥30 FPS on croissant with the corpus's own CSVs.
 
 ### 5.4 Testing strategy
 
@@ -198,3 +194,6 @@ golden protocol, traceability), not here. A worked run of §5.3.1/§5.3.2 is in
   ≥1 clamp; FR-12c's row-width wording matches the interpolation guarantee
   (a valid 4-point quad's rows are capped at the base width, not guaranteed to widen
   monotonically).
+- v0.3 (2026-11-07): owner review — status moved to approved. The cross-student
+  orientation check (§5.3.3) was dropped; orientation is anchored solely to the
+  lecturer's reference pseudocode (FR-12c).
