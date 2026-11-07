@@ -1,7 +1,7 @@
 # Plane Projection
 
 [![CI](https://github.com/ofeq-dev/plane-projection/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/ofeq-dev/plane-projection/actions/workflows/ci.yml)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-githubpages-22d3ee.svg)](https://ofeq-dev.github.io/plane-projection/)
 
@@ -13,7 +13,7 @@ exercise brief: `I2SE_Exe1.docx`).
 
 ## Build & run
 
-Python ≥ 3.10 (exercised on 3.12). Video encoding uses OpenCV's `cv2.VideoWriter`
+Python ≥ 3.12 (numpy 2.5.x requires it). Video encoding uses OpenCV's `cv2.VideoWriter`
 with the `mp4v` codec — everything is pip-installable, no system binary needed
 ([ADR 0004](docs/adr/0004-video-encoding-via-opencv-mp4v.md)):
 
