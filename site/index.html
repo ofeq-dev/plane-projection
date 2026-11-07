@@ -46,7 +46,7 @@
     </div>
     <figure>
       <video src="videos/lecturer_example.mp4" autoplay muted loop playsinline controls></video>
-      <figcaption class="hero-meta"><b>lecturer_example.mp4</b> · two valid projections, then two invalid-plane error frames · I2SE Exercise 1</figcaption>
+      <figcaption class="hero-meta"><b>lecturer_example.mp4</b> · two valid projections, then two invalid-plane error frames</figcaption>
     </figure>
   </section>
 
@@ -56,7 +56,7 @@
     <p class="section-sub">Everything from the exercise brief, with the engineering around it:
       typed seams, golden tests, and a reproducible benchmark harness.</p>
     <div class="grid cols-3">
-      <div class="card console">
+      <div class="card">
         <span class="tag">INPUT</span>
         <h3>NRRD volume loader</h3>
         <p>Reads 8-, 16- and 32-bit unsigned volumes up to 1024³ per axis
@@ -68,7 +68,7 @@
         <p>3-point planes must be equidistant from a common origin; 4-point planes must form a
           proper rectangle. Invalid specs raise and produce a visible error frame.</p>
       </div>
-      <div class="card console">
+      <div class="card">
         <span class="tag">RENDER</span>
         <h3>Closest-voxel sampling</h3>
         <p>Each output pixel takes the nearest voxel centre on the plane — deliberately simple,
@@ -80,7 +80,7 @@
         <p><code>cv2.VideoWriter</code> with the <code>mp4v</code> codec — pip-installable,
           no system ffmpeg needed (ADR 0004), canonical 30 fps.</p>
       </div>
-      <div class="card console">
+      <div class="card">
         <span class="tag">VERIFY</span>
         <h3>Tested &amp; typed</h3>
         <p>pytest suite with golden-frame oracles, CLI and validation tests, plus
@@ -217,7 +217,7 @@
         <h3>Software requirements</h3>
         <p>Functional and non-functional requirements, traced to the brief.</p>
       </a>
-      <a class="card console" href="algorithm.html">
+      <a class="card" href="algorithm.html">
         <span class="tag">LIVE</span>
         <h3>Algorithm walkthrough</h3>
         <p>Interactive, plain-words tour of the frame geometry — hosted right here on this site.</p>
