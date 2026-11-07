@@ -207,11 +207,10 @@ across a frame.
 
 ### Orientation freeze
 
-Orientation is pinned to this convention for cross-student comparability
-(FR-12c/SRS §5.3.3) — provisionally, until the cross-student check the SRS
-requires before the freeze: no mirroring, `bottom_left` (`b`) left /
-`bottom_right` (`c`) right. If that check diverges, the fix is a documented
-constant flip in a follow-up, not a silent match.
+Orientation is pinned to the lecturer's reference pseudocode (FR-12c): no
+mirroring, `bottom_left` (`b`) left / `bottom_right` (`c`) right. This is the
+final convention; any change is a documented constant flip, never a silent
+match.
 
 ## Voxel lookup and display
 
