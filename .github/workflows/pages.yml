@@ -22,12 +22,25 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       - name: Stage site (docs + videos + volumes referenced by the site)
         run: |
           mkdir -p site/videos site/img
-          cp assets/videos/*.mp4 site/videos/
           cp docs/algorithm.html site/ 2>/dev/null || true
           cp docs/images/example-run/*.png site/img/
+          # Committed videos are mp4v (MPEG-4 Part 2, ADR 0004), which Chrome/
+          # Firefox/Edge refuse to play in <video>. Re-encode to H.264 for the
+          # site only; the repo's assets/videos/*.mp4 stay mp4v.
+          ffmpeg -v error -y -i assets/videos/lecturer_example.mp4 \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+            site/videos/lecturer_example.mp4
+          ffmpeg -v error -y -i assets/videos/head.mp4 \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+            site/videos/head.mp4
+          ffmpeg -v error -y -i assets/videos/onion.mp4 \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+            site/videos/onion.mp4
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
